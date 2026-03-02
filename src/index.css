@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Chivo:ital,wght@0,300..900;1,300..900&family=Share+Tech+Mono&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-display: "Anton", sans-serif;
+  --font-body: "Chivo", sans-serif;
+  --font-mono: "Share Tech Mono", monospace;
+  
+  --color-transit-black: #0a0a0a;
+  --color-transit-white: #f4f4f0;
+  --color-transit-yellow: #eaff00;
+  --color-transit-orange: #ff3300;
+}
+
+body {
+  background-color: var(--color-transit-black);
+  color: var(--color-transit-white);
+  font-family: var(--font-body);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E");
+}
+
+.brutal-border {
+  border: 2px solid var(--color-transit-white);
+}
+
+.brutal-shadow {
+  box-shadow: 8px 8px 0px var(--color-transit-yellow);
+}
+
+.brutal-shadow-orange {
+  box-shadow: 8px 8px 0px var(--color-transit-orange);
+}
+
+.led-text {
+  font-family: var(--font-mono);
+  color: var(--color-transit-yellow);
+  text-shadow: 0 0 12px rgba(234, 255, 0, 0.6);
+}
+
+.led-text-orange {
+  font-family: var(--font-mono);
+  color: var(--color-transit-orange);
+  text-shadow: 0 0 12px rgba(255, 51, 0, 0.6);
+}
+
+.crt-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.15));
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* Custom scrollbar for terminal */
+.terminal-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.terminal-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+.terminal-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-transit-white);
+  opacity: 0.3;
+}
+.terminal-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-transit-yellow);
+}

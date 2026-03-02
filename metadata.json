@@ -1,0 +1,7 @@
+{
+  "name": "Last Bus Connector",
+  "description": "Finds the last connecting buses from Hunstanton to King's Lynn and onwards.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
