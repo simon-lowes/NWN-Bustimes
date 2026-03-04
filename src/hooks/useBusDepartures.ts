@@ -1,20 +1,19 @@
 import { useEffect, useState } from 'react';
-import { getTimetable, BusDeparture, TimetableResponse } from '../services/transportApi';
+import { getLiveDepartures, BusDeparture } from '../services/transportApi';
 
-const STOPS = {
-  HUNSTANTON: '2900H0120',
-  KINGS_LYNN: '2900K1356',
+const HUNSTANTON = '2900H5316';
+
+// Each dropdown destination maps to the King's Lynn stands that serve it.
+// Stand selection IS the filter — nextbuses directions show terminus names
+// (e.g. "Kings Lynn, Transport Interchange") not neighborhoods.
+const DESTINATION_STOPS: Record<string, string[]> = {
+  Fairstead:       ['2900K13143'],           // Stand G: 41, 42
+  Hospital:        ['2900K13141', '2900K13144'], // Stand E: 33-36, Stand H: 4, 5, 32
+  Gaywood:         ['2900K13144'],           // Stand H: 3H, 4, 5, 32, 47
+  'South Wootton': ['2900K13141'],           // Stand E: 33, 34, 35, 36
+  'North Wootton': ['2900K13141'],           // Stand E: 33, 34, 35, 36
+  'West Lynn':     ['2900K13139'],           // Stand C: 2, 3
 };
-
-function extract(data: TimetableResponse, destinations: string[]): BusDeparture[] {
-  const extracted: BusDeparture[] = [];
-  for (const lineBuses of Object.values(data.departures)) {
-    extracted.push(...lineBuses);
-  }
-  return extracted.filter((b) =>
-    destinations.some((d) => b.direction.toLowerCase().includes(d.toLowerCase()))
-  );
-}
 
 export function useBusDepartures(targetDestination: string) {
   const [hunstantonDepartures, setHunstantonDepartures] = useState<BusDeparture[]>([]);
@@ -30,36 +29,36 @@ export function useBusDepartures(targetDestination: string) {
       setIsLoading(true);
       setError(null);
       try {
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0] ?? '';
-        const timeStr = now.toTimeString().substring(0, 5);
-
-        const fetchForStop = async (atcocode: string, destinations: string[]) => {
-          const res = await getTimetable(atcocode, dateStr, timeStr, controller.signal);
-          let buses = extract(res, destinations);
-
-          if (buses.length === 0) {
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr = tomorrow.toISOString().split('T')[0] ?? '';
-            const tomorrowRes = await getTimetable(atcocode, tomorrowStr, '03:00', controller.signal);
-            buses = extract(tomorrowRes, destinations);
+        // Hunstanton: single stop, filter for King's Lynn bound
+        const hunstantonData = await getLiveDepartures(HUNSTANTON, controller.signal);
+        const hunstantonBuses: BusDeparture[] = [];
+        for (const lineBuses of Object.values(hunstantonData.departures)) {
+          for (const dep of lineBuses) {
+            if (dep.direction.toLowerCase().includes('lynn') || dep.direction.toLowerCase().includes('king')) {
+              hunstantonBuses.push(dep);
+            }
           }
-
-          buses.sort((a, b) => {
-            const dateA = new Date(`${a.date}T${a.aimed_departure_time}`);
-            const dateB = new Date(`${b.date}T${b.aimed_departure_time}`);
-            return dateA.getTime() - dateB.getTime();
-          });
-
-          return buses;
-        };
-
-        const hunstantonBuses = await fetchForStop(STOPS.HUNSTANTON, ['lynn', 'king']);
+        }
+        hunstantonBuses.sort((a, b) => a.aimed_departure_time.localeCompare(b.aimed_departure_time));
         setHunstantonDepartures(hunstantonBuses);
 
-        const kingsLynnBuses = await fetchForStop(STOPS.KINGS_LYNN, [targetDestination]);
-        setKingsLynnDepartures(kingsLynnBuses);
+        // King's Lynn: fetch relevant stands in parallel, merge results.
+        // No direction filter needed — stand selection determines the destination.
+        const stands = DESTINATION_STOPS[targetDestination] ?? [];
+        const standResults = await Promise.all(
+          stands.map((code) => getLiveDepartures(code, controller.signal).catch(() => null))
+        );
+
+        const allKLBuses: BusDeparture[] = [];
+        for (const result of standResults) {
+          if (result) {
+            for (const lineBuses of Object.values(result.departures)) {
+              allKLBuses.push(...lineBuses);
+            }
+          }
+        }
+        allKLBuses.sort((a, b) => a.aimed_departure_time.localeCompare(b.aimed_departure_time));
+        setKingsLynnDepartures(allKLBuses);
 
         setLastSync(new Date().toLocaleTimeString('en-GB', { hour12: true }));
       } catch (err) {
@@ -73,7 +72,7 @@ export function useBusDepartures(targetDestination: string) {
 
     void fetchBuses();
 
-    const interval = setInterval(() => void fetchBuses(), 5 * 60 * 1000);
+    const interval = setInterval(() => void fetchBuses(), 60_000); // poll every 60s (matches cache TTL)
     return () => {
       controller.abort();
       clearInterval(interval);

@@ -8,19 +8,27 @@ Real-time bus departures and AI transit assistant for North West Norfolk.
 
 ## Stack
 - **Frontend:** React 19 + Vite + Tailwind v4
-- **Backend:** Express server (`server.ts`) — proxies AI and bustimes.org requests
+- **Backend:** Express server (`server.ts`) — scrapes real-time departures + proxies AI requests
 - **AI:** Google Gemini 2.5 Flash via `@google/genai` SDK (server-side only)
 - **Runtime:** Node 22 with `--import=tsx` for TypeScript execution
 - **Build:** Vite for frontend, Dockerfile for production (multi-stage)
 
 ## Architecture
-- `server.ts` — Express entry point: `POST /api/ai/ask`, `GET /api/bustimes/*` proxy, static file serving
+- `server.ts` — Express entry point: `POST /api/ai/ask`, `GET /api/departures/:atcocode`, `GET /api/bustimes/*` proxy, static file serving
+- `server/departures.ts` — Server-side scraper: nextbuses.mobi (primary, real-time) → bustimes.org (fallback, timetable) with 60s in-memory cache
 - `server/aiService.ts` — Server-side Gemini logic with lazy SDK init (`getAi()` pattern)
 - `src/services/aiService.ts` — Thin fetch wrapper (client-side, no SDK)
-- `src/services/transportApi.ts` — Bus departure data (currently uses mock data — bustimes.org has no JSON departures API)
-- `src/hooks/useBusDepartures.ts` — Bus data fetching with AbortController
+- `src/services/transportApi.ts` — Thin fetch wrapper for `/api/departures/:atcocode` (no mock data)
+- `src/hooks/useBusDepartures.ts` — Multi-stand fetch with DESTINATION_STOPS mapping, 60s poll interval
 - `src/hooks/useAiAssistant.ts` — AI chat with AbortController
 - `src/components/ErrorBoundary.tsx` — React error boundary
+
+## ATCO Codes (verified)
+- Hunstanton Bus Station Bay 1: `2900H5316`
+- King's Lynn Stand C (routes 2, 3): `2900K13139`
+- King's Lynn Stand E (routes 33-36): `2900K13141`
+- King's Lynn Stand G (routes 41, 42): `2900K13143`
+- King's Lynn Stand H: `2900K13144`
 
 ## Deployment
 - **Live:** `https://bustimes.simonlowes.cloud`
@@ -37,10 +45,11 @@ Real-time bus departures and AI transit assistant for North West Norfolk.
 ## Key Decisions
 - API key is server-side only — never in client bundle
 - TypeScript strict mode + `noUncheckedIndexedAccess` enabled
-- ATCO codes in transportApi.ts are placeholders (2900H0120, 2900K1356) — real codes are 2900H5316 (Hunstanton) and 2900K132 (King's Lynn) but departures endpoint is HTML-only, so mock data is used regardless
+- Real-time data via server-side HTML scraping (nextbuses.mobi primary, bustimes.org fallback) — no mock data
+- Stand selection filters departures (not direction keyword matching) — nextbuses directions show terminus names, not neighborhoods
 - `.env` file is local-only, gitignored. Docker gets env vars via service update.
 
 ## Known Issues
-- bustimes.org has no JSON API for departures — app always shows mock timetable data
 - Gemini responses can be slow; may hit Cloudflare timeout on complex queries
 - Dokploy UI wouldn't accept environment variables — had to inject via `sudo docker service update --env-add`
+- nextbuses.mobi occasionally includes vehicle numbers in direction text (regex-stripped)

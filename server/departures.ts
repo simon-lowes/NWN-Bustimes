@@ -1,0 +1,222 @@
+import * as cheerio from 'cheerio';
+
+export interface BusDeparture {
+  line: string;
+  direction: string;
+  aimed_departure_time: string;
+  expected_departure_time: string;
+  best_departure_estimate: string;
+  date: string;
+}
+
+export interface StopDepartures {
+  atcocode: string;
+  name: string;
+  departures: {
+    [line: string]: BusDeparture[];
+  };
+}
+
+const STOP_NAMES: Record<string, string> = {
+  '2900H5316': 'Hunstanton Bus Station (Bay 1)',
+  '2900K13139': "King's Lynn Transport Interchange (Stand C)",
+  '2900K13141': "King's Lynn Transport Interchange (Stand E)",
+  '2900K13143': "King's Lynn Transport Interchange (Stand G)",
+  '2900K13144': "King's Lynn Transport Interchange (Stand H)",
+};
+
+interface CacheEntry {
+  data: StopDepartures;
+  expires: number;
+}
+
+const cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 60_000; // 60 seconds
+
+function todayStr(): string {
+  return new Date().toISOString().split('T')[0] ?? '';
+}
+
+function makeDeparture(
+  line: string,
+  direction: string,
+  time: string,
+  date: string
+): BusDeparture {
+  return {
+    line,
+    direction,
+    aimed_departure_time: time,
+    expected_departure_time: time,
+    best_departure_estimate: time,
+    date,
+  };
+}
+
+function groupByLine(departures: BusDeparture[]): Record<string, BusDeparture[]> {
+  const grouped: Record<string, BusDeparture[]> = {};
+  for (const dep of departures) {
+    const bucket = grouped[dep.line];
+    if (bucket) {
+      bucket.push(dep);
+    } else {
+      grouped[dep.line] = [dep];
+    }
+  }
+  return grouped;
+}
+
+/**
+ * Primary source: nextbuses.mobi
+ * Provides real-time "in X mins" countdown predictions when available.
+ */
+export async function fetchNextBuses(atcocode: string): Promise<StopDepartures | null> {
+  const url = `https://nextbuses.mobi/WebView/BusStopSearch/BusStopSearchResults/${atcocode}`;
+
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'NWN-Bustimes/1.0' },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!res.ok) return null;
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  // Extract stop name from heading
+  const heading = $('h2').first().text().trim();
+  const nameMatch = heading.match(/^Departures for (.+?)(?:\s*\[|$)/);
+  const name = nameMatch?.[1]?.trim() ?? STOP_NAMES[atcocode] ?? 'Bus Stop';
+
+  const departures: BusDeparture[] = [];
+  const today = todayStr();
+  const now = new Date();
+
+  $('table.BusStops tr').each((_i, row) => {
+    const $row = $(row);
+    const lineEl = $row.find('td.Number a');
+    const line = lineEl.text().trim();
+    if (!line) return;
+
+    // Collapse whitespace (nextbuses sometimes has newlines in text)
+    const infoText = $row.find('td:not(.Number) p.Stops').text().trim().replace(/\s+/g, ' ');
+    if (!infoText) return;
+
+    // Parse "Destination at HH:MM" or "Destination in X mins"
+    let direction: string;
+    let time: string;
+
+    const atMatch = infoText.match(/^(.+?)\s+at\s+(\d{1,2}:\d{2})$/);
+    const inMatch = infoText.match(/^(.+?)\s+in\s+(\d+)\s+mins?$/);
+
+    if (atMatch) {
+      direction = atMatch[1]?.trim() ?? 'Unknown';
+      time = atMatch[2] ?? '00:00';
+    } else if (inMatch) {
+      direction = inMatch[1]?.trim() ?? 'Unknown';
+      const mins = parseInt(inMatch[2] ?? '0', 10);
+      const estimated = new Date(now.getTime() + mins * 60_000);
+      time = estimated.toTimeString().substring(0, 5);
+    } else {
+      return; // unparseable row
+    }
+
+    // Strip vehicle numbers from direction (e.g. "King's Lynn 3702 - SK68 TMZ" → "King's Lynn")
+    direction = direction.replace(/\s+\d{4}\s*-\s*[A-Z0-9]+(?:\s+[A-Z0-9]+)*$/, '').trim();
+
+    departures.push(makeDeparture(line, direction, time, today));
+  });
+
+  // Check "0 departures" in heading — return empty rather than null
+  if (departures.length === 0) {
+    const zeroMatch = $('h5').text().includes('0 departures');
+    if (zeroMatch) {
+      return { atcocode, name, departures: {} };
+    }
+    return null; // couldn't parse anything — let fallback try
+  }
+
+  return { atcocode, name, departures: groupByLine(departures) };
+}
+
+/**
+ * Fallback source: bustimes.org /departures endpoint
+ * Returns timetable data (scheduled times, no real-time).
+ */
+export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures | null> {
+  const url = `https://bustimes.org/stops/${atcocode}/departures`;
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'NWN-Bustimes/1.0',
+      Accept: 'text/html',
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (!res.ok) return null;
+
+  const html = await res.text();
+  const $ = cheerio.load(html);
+
+  const departures: BusDeparture[] = [];
+  const today = todayStr();
+
+  // Skip header row, parse each departure row
+  $('table tbody tr').each((_i, row) => {
+    const $row = $(row);
+    const cells = $row.find('td');
+    if (cells.length < 3) return; // skip header or malformed rows
+
+    const line = $(cells[0]).text().trim();
+    const direction = $(cells[1]).text().trim();
+    const time = $(cells[2]).text().trim();
+
+    if (!line || !time) return;
+
+    // Validate time format (HH:MM)
+    if (!/^\d{1,2}:\d{2}$/.test(time)) return;
+
+    departures.push(makeDeparture(line, direction || 'Unknown', time, today));
+  });
+
+  if (departures.length === 0) return null;
+
+  const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
+  return { atcocode, name, departures: groupByLine(departures) };
+}
+
+/**
+ * Orchestrator: cache → nextbuses → bustimes → throw
+ */
+export async function getDepartures(atcocode: string): Promise<StopDepartures> {
+  // Check cache
+  const cached = cache.get(atcocode);
+  if (cached && cached.expires > Date.now()) {
+    return cached.data;
+  }
+
+  // Try nextbuses.mobi first
+  try {
+    const result = await fetchNextBuses(atcocode);
+    if (result) {
+      cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
+      return result;
+    }
+  } catch (err) {
+    console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
+  }
+
+  // Fallback to bustimes.org
+  try {
+    const result = await fetchBustimesXhr(atcocode);
+    if (result) {
+      cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
+      return result;
+    }
+  } catch (err) {
+    console.warn(`bustimes.org failed for ${atcocode}:`, err);
+  }
+
+  throw new Error(`No departure data available for stop ${atcocode}`);
+}

@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { askBusQuestion } from './server/aiService.js';
+import { getDepartures } from './server/departures.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -25,6 +26,17 @@ app.post('/api/ai/ask', async (req, res) => {
   } catch (err) {
     console.error('AI request failed:', err);
     res.status(500).json({ error: 'AI request failed' });
+  }
+});
+
+// Real-time departures — scrapes nextbuses.mobi + bustimes.org fallback
+app.get('/api/departures/:atcocode', async (req, res) => {
+  try {
+    const data = await getDepartures(req.params.atcocode);
+    res.json(data);
+  } catch (err) {
+    console.error('Departures fetch failed:', err);
+    res.status(502).json({ error: 'No departure data available' });
   }
 });
 
