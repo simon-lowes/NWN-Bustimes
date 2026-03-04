@@ -1,5 +1,5 @@
-import React from 'react';
 import { BusDeparture } from '../services/transportApi';
+import { formatTime12h } from '../utils/time';
 import { motion } from 'motion/react';
 
 interface BusCardProps {
@@ -12,21 +12,12 @@ interface BusCardProps {
 }
 
 export function BusCard({ title, subtitle, departures, isLoading, error, delay = 0 }: BusCardProps) {
-  // Convert 24h to 12h format
-  const formatTime12h = (time24: string) => {
-    if (!time24) return '';
-    const [hours, minutes] = time24.split(':');
-    const h = parseInt(hours, 10);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return `${h12}:${minutes} ${ampm}`;
-  };
-
-  const nextBus = departures.length > 0 ? departures[0] : null;
-  const lastBus = departures.length > 1 ? departures[departures.length - 1] : null;
+  const today = new Date().toISOString().split('T')[0] ?? '';
+  const nextBus = departures[0];
+  const lastBus = departures.length > 1 ? departures[departures.length - 1] : undefined;
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
@@ -44,9 +35,9 @@ export function BusCard({ title, subtitle, departures, isLoading, error, delay =
 
       <div className="relative z-10">
         {isLoading ? (
-          <div className="led-text animate-pulse text-2xl md:text-3xl py-8">LOADING_DATA...</div>
+          <div className="led-text animate-pulse text-2xl md:text-3xl py-8" role="status" aria-live="polite">LOADING_DATA...</div>
         ) : error ? (
-          <div className="led-text-orange text-xl md:text-2xl py-8">ERR: {error}</div>
+          <div className="led-text-orange text-xl md:text-2xl py-8" role="alert">ERR: {error}</div>
         ) : departures.length === 0 ? (
           <div className="led-text text-xl md:text-2xl opacity-50 py-8">NO_SERVICE_AVAILABLE</div>
         ) : (
@@ -56,7 +47,7 @@ export function BusCard({ title, subtitle, departures, isLoading, error, delay =
               <div className="relative">
                 <div className="text-xs md:text-sm font-mono text-transit-white/50 mb-2 tracking-widest flex items-center">
                   NEXT_DEPARTURE
-                  {nextBus.date > new Date().toISOString().split('T')[0] && (
+                  {nextBus.date > today && (
                     <span className="ml-3 bg-transit-yellow text-transit-black px-2 py-0.5 text-[10px] font-bold tracking-widest animate-pulse">TOMORROW</span>
                   )}
                 </div>
@@ -79,7 +70,7 @@ export function BusCard({ title, subtitle, departures, isLoading, error, delay =
                 <div className="text-xs md:text-sm font-mono text-transit-orange mb-2 flex items-center gap-2 tracking-widest">
                   <span className="w-2 h-2 bg-transit-orange rounded-full animate-pulse"></span>
                   FINAL_SERVICE
-                  {lastBus.date > new Date().toISOString().split('T')[0] && (
+                  {lastBus.date > today && (
                     <span className="ml-3 bg-transit-orange text-transit-black px-2 py-0.5 text-[10px] font-bold tracking-widest">TOMORROW</span>
                   )}
                 </div>

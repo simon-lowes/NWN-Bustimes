@@ -1,15 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { BusCard } from './components/BusCard';
-import { getTimetable, BusDeparture } from './services/transportApi';
-import { askBusQuestion, AiResponse } from './services/aiService';
+import { useBusDepartures } from './hooks/useBusDepartures';
+import { useAiAssistant } from './hooks/useAiAssistant';
 import Markdown from 'react-markdown';
 import { motion } from 'motion/react';
-
-// Hardcoded ATCO codes for now, to be expanded later
-const STOPS = {
-  HUNSTANTON: '2900H0120',
-  KINGS_LYNN: '2900K1356',
-};
 
 const PRESETS = [
   "When is the next bus to town?",
@@ -19,125 +13,16 @@ const PRESETS = [
 ];
 
 export default function App() {
-  const [hunstantonDepartures, setHunstantonDepartures] = useState<BusDeparture[]>([]);
-  const [kingsLynnDepartures, setKingsLynnDepartures] = useState<BusDeparture[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [targetDestination, setTargetDestination] = useState('Fairstead'); // Default target from King's Lynn
-  const [lastSync, setLastSync] = useState<string | null>(null);
-
-  // AI Assistant State
-  const [query, setQuery] = useState('');
-  const [aiResponse, setAiResponse] = useState<AiResponse | null>(null);
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchBuses() {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
-        const timeStr = now.toTimeString().substring(0, 5);
-
-        const fetchForStop = async (atcocode: string, destinations: string[]) => {
-          let res = await getTimetable(atcocode, dateStr, timeStr);
-          
-          const extract = (data: any) => {
-            let extracted: BusDeparture[] = [];
-            Object.values(data.departures || {}).forEach((lineBuses: any) => {
-              extracted = [...extracted, ...lineBuses];
-            });
-            return extracted.filter(b => 
-              destinations.some(d => b.direction.toLowerCase().includes(d.toLowerCase()))
-            );
-          };
-
-          let buses = extract(res);
-
-          // If no buses left today, fetch tomorrow's schedule
-          if (buses.length === 0) {
-            const tomorrow = new Date(now);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr = tomorrow.toISOString().split('T')[0];
-            // Start from early morning to get the first buses of the day
-            const tomorrowRes = await getTimetable(atcocode, tomorrowStr, '03:00');
-            buses = extract(tomorrowRes);
-          }
-
-          // Sort by time
-          buses.sort((a, b) => {
-            const dateA = new Date(`${a.date}T${a.aimed_departure_time}`);
-            const dateB = new Date(`${b.date}T${b.aimed_departure_time}`);
-            return dateA.getTime() - dateB.getTime();
-          });
-
-          return buses;
-        };
-
-        const hunstantonBuses = await fetchForStop(STOPS.HUNSTANTON, ['lynn', 'king']);
-        setHunstantonDepartures(hunstantonBuses);
-
-        const kingsLynnBuses = await fetchForStop(STOPS.KINGS_LYNN, [targetDestination]);
-        setKingsLynnDepartures(kingsLynnBuses);
-        
-        setLastSync(new Date().toLocaleTimeString('en-GB', { hour12: true }));
-      } catch (err) {
-        setError('ERR_FETCH_FAIL');
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    fetchBuses();
-    
-    // Refresh every 5 minutes
-    const interval = setInterval(fetchBuses, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [targetDestination]);
-
-  const handleAskQuestion = async (questionToAsk: string, requiresLocation: boolean = false) => {
-    if (!questionToAsk.trim()) return;
-    
-    setQuery(questionToAsk);
-    setIsAiLoading(true);
-    setAiError(null);
-    setAiResponse(null);
-    
-    try {
-      let location: { lat: number; lng: number } | undefined;
-      
-      if (requiresLocation || questionToAsk.toLowerCase().includes('to town')) {
-        try {
-          location = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-              (err) => reject(err),
-              { timeout: 5000 }
-            );
-          });
-        } catch (err) {
-          console.warn("Geolocation failed or denied", err);
-          // We can still proceed without location, or append a note to the question
-          questionToAsk += " (User location unavailable, assume they are in North West Norfolk)";
-        }
-      }
-
-      const response = await askBusQuestion(questionToAsk, location);
-      setAiResponse(response);
-    } catch (err) {
-      setAiError('CONNECTION_TIMEOUT');
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
+  const [targetDestination, setTargetDestination] = useState('Fairstead');
+  const { hunstantonDepartures, kingsLynnDepartures, isLoading, error, lastSync } =
+    useBusDepartures(targetDestination);
+  const { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion } =
+    useAiAssistant();
 
   return (
     <div className="min-h-screen bg-transit-black text-transit-white selection:bg-transit-yellow selection:text-transit-black p-4 md:p-8 lg:p-12 font-body">
       {/* Header */}
-      <motion.header 
+      <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -163,7 +48,7 @@ export default function App() {
       </motion.header>
 
       <main className="grid grid-cols-1 xl:grid-cols-12 gap-8 lg:gap-12 max-w-[1800px] mx-auto">
-        
+
         {/* Left Column: The Boards */}
         <div className="xl:col-span-7 flex flex-col gap-8">
           <BusCard
@@ -175,17 +60,18 @@ export default function App() {
             delay={0.1}
           />
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
             className="brutal-border p-6 bg-transit-white text-transit-black flex flex-col sm:flex-row gap-6 items-start sm:items-center justify-between brutal-shadow"
           >
-            <label className="font-display text-4xl md:text-5xl uppercase leading-none tracking-tight">
+            <label htmlFor="destination-select" className="font-display text-4xl md:text-5xl uppercase leading-none tracking-tight">
               CONNECTION<br/>TARGET:
             </label>
             <div className="relative w-full sm:w-auto">
               <select
+                id="destination-select"
                 value={targetDestination}
                 onChange={(e) => setTargetDestination(e.target.value)}
                 className="appearance-none w-full sm:w-64 bg-transparent border-b-4 border-transit-black font-mono text-2xl md:text-3xl focus:outline-none focus:bg-transit-yellow/30 p-2 pr-10 rounded-none cursor-pointer uppercase tracking-widest transition-colors"
@@ -214,7 +100,7 @@ export default function App() {
         </div>
 
         {/* Right Column: AI Terminal */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
@@ -222,7 +108,7 @@ export default function App() {
         >
           <div className="brutal-border flex-1 flex flex-col bg-[#050505] relative overflow-hidden brutal-shadow-orange">
             <div className="crt-scanline"></div>
-            
+
             {/* Terminal Header */}
             <div className="bg-transit-white text-transit-black p-3 font-mono font-bold flex justify-between items-center relative z-10">
               <span className="tracking-widest">TERMINAL // AI_ASSIST</span>
@@ -242,6 +128,7 @@ export default function App() {
                   <button
                     key={idx}
                     onClick={() => handleAskQuestion(preset, idx === 0)}
+                    aria-label={preset}
                     className="font-mono text-xs md:text-sm border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-2 text-left transition-all duration-200 uppercase tracking-wider"
                   >
                     [{idx + 1}] {preset}
@@ -252,29 +139,29 @@ export default function App() {
               {/* Chat Area */}
               <div className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-sm md:text-base terminal-scroll">
                 {aiError && (
-                  <div className="text-transit-orange tracking-widest">{'>'} ERR: {aiError}</div>
+                  <div className="text-transit-orange tracking-widest" role="alert">{'>'} ERR: {aiError}</div>
                 )}
-                
+
                 {aiResponse && (
-                  <motion.div 
-                    initial={{ opacity: 0 }} 
-                    animate={{ opacity: 1 }} 
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     className="border-l-4 border-transit-yellow pl-4"
                   >
                     <div className="text-transit-yellow mb-4 font-bold tracking-widest">{'>'} RESPONSE_GENERATED:</div>
                     <div className="prose prose-invert prose-p:leading-relaxed prose-a:text-transit-yellow hover:prose-a:text-transit-white max-w-none font-mono text-sm md:text-base tracking-wide">
                       <Markdown>{aiResponse.text}</Markdown>
                     </div>
-                    
+
                     {aiResponse.links && aiResponse.links.length > 0 && (
                       <div className="mt-8 pt-4 border-t-2 border-dashed border-transit-white/20">
                         <div className="text-transit-white/50 mb-3 tracking-widest">{'>'} SOURCES:</div>
                         <ul className="space-y-3">
                           {aiResponse.links.map((link, idx) => (
                             <li key={idx}>
-                              <a 
-                                href={link.uri} 
-                                target="_blank" 
+                              <a
+                                href={link.uri}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-transit-yellow hover:text-transit-white hover:bg-transit-white/10 px-2 py-1 -ml-2 transition-colors truncate block"
                               >
@@ -287,19 +174,21 @@ export default function App() {
                     )}
                   </motion.div>
                 )}
-                
+
                 {isAiLoading && (
-                  <div className="text-transit-yellow animate-pulse tracking-widest">{'>'} PROCESSING_QUERY...</div>
+                  <div className="text-transit-yellow animate-pulse tracking-widest" role="status" aria-live="polite">{'>'} PROCESSING_QUERY...</div>
                 )}
               </div>
 
               {/* Input Form */}
-              <form 
+              <form
                 onSubmit={(e) => { e.preventDefault(); handleAskQuestion(query); }}
                 className="mt-auto relative flex items-center border-t-4 border-transit-white/20 pt-6"
               >
+                <label htmlFor="ai-query" className="sr-only">Ask a bus question</label>
                 <span className="text-transit-yellow mr-3 font-bold text-xl">{'>'}</span>
                 <input
+                  id="ai-query"
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
