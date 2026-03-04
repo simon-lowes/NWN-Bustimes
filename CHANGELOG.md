@@ -8,15 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Server-side departure scraper (`server/departures.ts`) with tiered fallback: nextbuses.mobi (real-time) then bustimes.org (timetable)
+- Server-side departure scraper (`server/departures.ts`) fetching both nextbuses.mobi and bustimes.org in parallel
 - `GET /api/departures/:atcocode` endpoint with 60-second in-memory cache
-- Multi-stand fetching for King's Lynn — each dropdown destination maps to the correct bus stand(s)
+- Multi-stand fetching for both stations — Hunstanton uses Stand A + B, King's Lynn maps destinations to correct stand(s)
+- bustimes.org parser uses "Expected" column for real-time times when available
 - `cheerio` dependency for HTML parsing
 
 ### Changed
 
 - Client transport API (`transportApi.ts`) is now a thin fetch wrapper — all scraping logic is server-side
-- ATCO codes updated to verified real codes: Hunstanton `2900H5316`, King's Lynn stands C/E/G/H
+- Both data sources fetched concurrently (not sequential fallback) — nextbuses preferred for real-time, bustimes fills gaps
+- ATCO codes verified: Hunstanton Stand A `2900H5315` + Stand B `2900H5314` (Bay 1 is arrivals-only), King's Lynn stands C/E/G/H
 - Poll interval reduced from 5 minutes to 60 seconds (matches server cache TTL)
 - Departure filtering uses stand-to-destination mapping instead of direction keyword matching
 
