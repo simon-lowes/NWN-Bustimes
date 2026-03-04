@@ -19,7 +19,8 @@
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
@@ -31,7 +32,6 @@
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.1.2",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }
