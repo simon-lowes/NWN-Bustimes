@@ -24,7 +24,9 @@ Real-time bus departures and AI transit assistant for North West Norfolk.
 - `src/components/ErrorBoundary.tsx` — React error boundary
 
 ## ATCO Codes (verified)
-- Hunstanton Bus Station Bay 1: `2900H5316`
+- Hunstanton Stand A (departures to KL): `2900H5315`
+- Hunstanton Stand B (departures to Fakenham): `2900H5314`
+- Hunstanton Bay 1 (arrivals only, NOT for departures): `2900H5316`
 - King's Lynn Stand C (routes 2, 3): `2900K13139`
 - King's Lynn Stand E (routes 33-36): `2900K13141`
 - King's Lynn Stand G (routes 41, 42): `2900K13143`

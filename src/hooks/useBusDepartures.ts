@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getLiveDepartures, BusDeparture } from '../services/transportApi';
 
-const HUNSTANTON = '2900H5316';
+// Hunstanton departures go from Stand A and Stand B (Bay 1 is arrivals-only)
+const HUNSTANTON_STANDS = ['2900H5315', '2900H5314'];
 
 // Each dropdown destination maps to the King's Lynn stands that serve it.
 // Stand selection IS the filter — nextbuses directions show terminus names
@@ -29,13 +30,19 @@ export function useBusDepartures(targetDestination: string) {
       setIsLoading(true);
       setError(null);
       try {
-        // Hunstanton: single stop, filter for King's Lynn bound
-        const hunstantonData = await getLiveDepartures(HUNSTANTON, controller.signal);
+        // Hunstanton: fetch both departure stands in parallel, filter for King's Lynn bound
+        const hunstantonResults = await Promise.all(
+          HUNSTANTON_STANDS.map((code) => getLiveDepartures(code, controller.signal).catch(() => null))
+        );
         const hunstantonBuses: BusDeparture[] = [];
-        for (const lineBuses of Object.values(hunstantonData.departures)) {
-          for (const dep of lineBuses) {
-            if (dep.direction.toLowerCase().includes('lynn') || dep.direction.toLowerCase().includes('king')) {
-              hunstantonBuses.push(dep);
+        for (const result of hunstantonResults) {
+          if (result) {
+            for (const lineBuses of Object.values(result.departures)) {
+              for (const dep of lineBuses) {
+                if (dep.direction.toLowerCase().includes('lynn') || dep.direction.toLowerCase().includes('king')) {
+                  hunstantonBuses.push(dep);
+                }
+              }
             }
           }
         }

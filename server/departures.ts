@@ -18,7 +18,8 @@ export interface StopDepartures {
 }
 
 const STOP_NAMES: Record<string, string> = {
-  '2900H5316': 'Hunstanton Bus Station (Bay 1)',
+  '2900H5315': 'Hunstanton Bus Station (Stand A)',
+  '2900H5314': 'Hunstanton Bus Station (Stand B)',
   '2900K13139': "King's Lynn Transport Interchange (Stand C)",
   '2900K13141': "King's Lynn Transport Interchange (Stand E)",
   '2900K13143': "King's Lynn Transport Interchange (Stand G)",
@@ -166,15 +167,28 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
     if (cells.length < 3) return; // skip header or malformed rows
 
     const line = $(cells[0]).text().trim();
-    const direction = $(cells[1]).text().trim();
-    const time = $(cells[2]).text().trim();
+    // Remove vehicle info div before extracting direction text
+    const dirCell = $(cells[1]).clone();
+    dirCell.find('.vehicle').remove();
+    const direction = dirCell.text().trim();
+    const scheduled = $(cells[2]).text().trim();
+    // 4th column is real-time "Expected" when available
+    const expected = cells[3] ? $(cells[3]).text().trim() : '';
 
-    if (!line || !time) return;
+    if (!line || !scheduled) return;
 
     // Validate time format (HH:MM)
-    if (!/^\d{1,2}:\d{2}$/.test(time)) return;
+    if (!/^\d{1,2}:\d{2}$/.test(scheduled)) return;
+    const bestTime = /^\d{1,2}:\d{2}$/.test(expected) ? expected : scheduled;
 
-    departures.push(makeDeparture(line, direction || 'Unknown', time, today));
+    departures.push({
+      line,
+      direction: direction || 'Unknown',
+      aimed_departure_time: scheduled,
+      expected_departure_time: bestTime,
+      best_departure_estimate: bestTime,
+      date: today,
+    });
   });
 
   if (departures.length === 0) return null;
