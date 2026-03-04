@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BusCard } from './components/BusCard';
 import { useBusDepartures } from './hooks/useBusDepartures';
 import { useAiAssistant } from './hooks/useAiAssistant';
@@ -18,6 +18,13 @@ export default function App() {
     useBusDepartures(targetDestination);
   const { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion } =
     useAiAssistant();
+
+  const chatRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (aiResponse && chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
+  }, [aiResponse]);
 
   return (
     <div className="min-h-screen bg-transit-black text-transit-white selection:bg-transit-yellow selection:text-transit-black p-4 md:p-8 lg:p-12 font-body">
@@ -104,7 +111,7 @@ export default function App() {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="xl:col-span-5 h-[600px] xl:h-auto min-h-[600px] flex flex-col"
+          className="xl:col-span-5 h-[80dvh] xl:h-auto min-h-[600px] flex flex-col"
         >
           <div className="brutal-border flex-1 flex flex-col bg-[#050505] relative overflow-hidden brutal-shadow-orange">
             <div className="crt-scanline"></div>
@@ -116,28 +123,30 @@ export default function App() {
             </div>
 
             {/* Terminal Body */}
-            <div className="p-6 flex-1 flex flex-col relative z-10 overflow-hidden">
+            <div className="p-6 flex-1 flex flex-col relative z-10 overflow-y-auto">
               <div className="font-mono text-sm md:text-base text-transit-white/60 mb-8 space-y-1 tracking-widest uppercase">
                 <p>{'>'} INITIALIZING SMART TRANSIT ASSISTANT...</p>
                 <p>{'>'} LOADED CONSTITUENCY DATA.</p>
                 <p>{'>'} AWAITING QUERY.</p>
               </div>
 
-              <div className="flex flex-wrap gap-3 mb-8">
-                {PRESETS.map((preset, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleAskQuestion(preset, idx === 0)}
-                    aria-label={preset}
-                    className="font-mono text-xs md:text-sm border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-2 text-left transition-all duration-200 uppercase tracking-wider"
-                  >
-                    [{idx + 1}] {preset}
-                  </button>
-                ))}
-              </div>
+              {!aiResponse && !isAiLoading && !aiError && (
+                <div className="flex flex-wrap gap-3 mb-8">
+                  {PRESETS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleAskQuestion(preset, idx === 0)}
+                      aria-label={preset}
+                      className="font-mono text-xs md:text-sm border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-2 text-left transition-all duration-200 uppercase tracking-wider"
+                    >
+                      [{idx + 1}] {preset}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Chat Area */}
-              <div className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-sm md:text-base terminal-scroll">
+              <div ref={chatRef} className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-sm md:text-base terminal-scroll">
                 {aiError && (
                   <div className="text-transit-orange tracking-widest" role="alert">{'>'} ERR: {aiError}</div>
                 )}
