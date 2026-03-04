@@ -17,6 +17,13 @@ export interface StopDepartures {
   };
 }
 
+export interface Alert {
+  line: string;
+  stand: string;
+  message: string;
+  detectedAt: string;
+}
+
 const STOP_NAMES: Record<string, string> = {
   '2900H5315': 'Hunstanton Bus Station (Stand A)',
   '2900H5314': 'Hunstanton Bus Station (Stand B)',
@@ -26,13 +33,58 @@ const STOP_NAMES: Record<string, string> = {
   '2900K13144': "King's Lynn Transport Interchange (Stand H)",
 };
 
+// All ATCO codes this app cares about
+const ALL_ATCO_CODES = Object.keys(STOP_NAMES);
+
+// --- Layer 1: Timetable Cache (bustimes.org, 4-hour TTL, background) ---
+
 interface CacheEntry {
   data: StopDepartures;
   expires: number;
 }
 
-const cache = new Map<string, CacheEntry>();
-const CACHE_TTL = 60_000; // 60 seconds
+const timetableCache = new Map<string, CacheEntry>();
+const TIMETABLE_TTL = 4 * 60 * 60 * 1000; // 4 hours
+
+// --- Layer 2: Live Cache (nextbuses.mobi, 5-minute TTL, on-demand) ---
+
+const liveCache = new Map<string, CacheEntry>();
+const LIVE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// --- Layer 3: Alerts ---
+
+let alerts: Alert[] = [];
+
+export function getAlerts(): Alert[] {
+  return alerts;
+}
+
+// --- Request Cooldown (10s minimum between nextbuses.mobi requests) ---
+
+const lastRequestTime = new Map<string, number>();
+const COOLDOWN_MS = 10_000; // 10 seconds (respects nextbuses.mobi crawl-delay)
+
+function canRequestSource(source: string): boolean {
+  const last = lastRequestTime.get(source);
+  if (!last) return true;
+  return Date.now() - last >= COOLDOWN_MS;
+}
+
+function markRequested(source: string): void {
+  lastRequestTime.set(source, Date.now());
+}
+
+// Wait until cooldown expires for a source, then proceed
+async function waitForCooldown(source: string): Promise<void> {
+  const last = lastRequestTime.get(source);
+  if (!last) return;
+  const elapsed = Date.now() - last;
+  if (elapsed < COOLDOWN_MS) {
+    await new Promise((resolve) => setTimeout(resolve, COOLDOWN_MS - elapsed));
+  }
+}
+
+// --- Helpers ---
 
 function todayStr(): string {
   return new Date().toISOString().split('T')[0] ?? '';
@@ -128,8 +180,7 @@ export async function fetchNextBuses(atcocode: string): Promise<StopDepartures |
     departures.push(makeDeparture(line, direction, time, today));
   });
 
-  // If no departures parsed, always fall through to bustimes.org —
-  // nextbuses "0 departures" may just mean it doesn't track this stop.
+  // If no departures parsed, return null to fall through
   if (departures.length === 0) {
     return null;
   }
@@ -198,39 +249,179 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
 }
 
 /**
- * Orchestrator: fetch both sources in parallel, prefer nextbuses (real-time)
- * but use bustimes when nextbuses has nothing.
+ * Get departures for a stop.
+ * - live=false (default): returns timetable cache (bustimes.org background data)
+ * - live=true: returns nextbuses.mobi real-time data (on-demand, with cooldown)
  */
-export async function getDepartures(atcocode: string): Promise<StopDepartures> {
-  // Check cache
-  const cached = cache.get(atcocode);
-  if (cached && cached.expires > Date.now()) {
-    return cached.data;
-  }
+export async function getDepartures(
+  atcocode: string,
+  options: { live?: boolean } = {}
+): Promise<StopDepartures> {
+  const { live = false } = options;
 
-  // Fetch both sources in parallel
-  const [nextbusesResult, bustimesResult] = await Promise.all([
-    fetchNextBuses(atcocode).catch((err) => {
+  if (live) {
+    // Check live cache first
+    const cached = liveCache.get(atcocode);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+
+    // Fetch from nextbuses.mobi with cooldown enforcement
+    await waitForCooldown('nextbuses');
+    markRequested('nextbuses');
+
+    const result = await fetchNextBuses(atcocode).catch((err) => {
       console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
       return null;
-    }),
-    fetchBustimesXhr(atcocode).catch((err) => {
-      console.warn(`bustimes.org failed for ${atcocode}:`, err);
-      return null;
-    }),
-  ]);
+    });
 
-  // Prefer nextbuses (has real-time "in X mins"), fall back to bustimes
-  const result = nextbusesResult ?? bustimesResult;
+    if (result) {
+      liveCache.set(atcocode, { data: result, expires: Date.now() + LIVE_TTL });
+      return result;
+    }
 
-  if (result) {
-    cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
-    return result;
+    // Live fetch failed — fall back to timetable cache
+    const timetable = timetableCache.get(atcocode);
+    if (timetable) return timetable.data;
+  } else {
+    // Return timetable cache directly
+    const cached = timetableCache.get(atcocode);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
   }
 
-  // Both returned null — genuinely no departures
+  // Nothing cached — return empty
   const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
-  const empty: StopDepartures = { atcocode, name, departures: {} };
-  cache.set(atcocode, { data: empty, expires: Date.now() + CACHE_TTL });
-  return empty;
+  return { atcocode, name, departures: {} };
+}
+
+// --- Background Jobs ---
+
+/**
+ * Populate timetable cache for all stops from bustimes.org.
+ * Fetches sequentially with cooldown to be respectful.
+ */
+async function refreshTimetableCache(): Promise<void> {
+  console.log('[timetable] Refreshing timetable cache for all stops...');
+  let populated = 0;
+
+  for (const atcocode of ALL_ATCO_CODES) {
+    try {
+      const result = await fetchBustimesXhr(atcocode);
+      if (result) {
+        timetableCache.set(atcocode, { data: result, expires: Date.now() + TIMETABLE_TTL });
+        populated++;
+      }
+      // Small delay between requests to bustimes.org (respectful)
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    } catch (err) {
+      console.warn(`[timetable] Failed for ${atcocode}:`, err);
+    }
+  }
+
+  console.log(`[timetable] Cache populated for ${populated}/${ALL_ATCO_CODES.length} stops`);
+}
+
+/**
+ * Alert check: compare live data vs timetable to detect potential cancellations.
+ * Fetches nextbuses.mobi for all stops and compares with timetable cache.
+ */
+async function checkForAlerts(): Promise<void> {
+  console.log('[alerts] Running alert check...');
+  const newAlerts: Alert[] = [];
+  const now = new Date();
+  const nowTime = now.toTimeString().substring(0, 5);
+  const detectedAt = now.toISOString();
+
+  for (const atcocode of ALL_ATCO_CODES) {
+    const timetable = timetableCache.get(atcocode);
+    if (!timetable) continue;
+
+    // Fetch live data for comparison
+    await waitForCooldown('nextbuses');
+    markRequested('nextbuses');
+
+    const live = await fetchNextBuses(atcocode).catch(() => null);
+    if (!live) continue;
+
+    const standName = STOP_NAMES[atcocode] ?? atcocode;
+
+    // Check each timetabled line: if it should be running now but isn't in live data
+    for (const [line, timetabledDeps] of Object.entries(timetable.data.departures)) {
+      // Find timetabled departures in the next 2 hours
+      const upcoming = timetabledDeps.filter((dep) => {
+        return dep.aimed_departure_time >= nowTime &&
+               dep.aimed_departure_time <= timeAdd(nowTime, 120);
+      });
+
+      if (upcoming.length === 0) continue;
+
+      // Check if this line appears in live data at all
+      const liveLines = Object.keys(live.departures);
+      if (!liveLines.includes(line)) {
+        newAlerts.push({
+          line,
+          stand: standName,
+          message: `Route ${line} is scheduled but not appearing in live data — may be cancelled`,
+          detectedAt,
+        });
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+
+  alerts = newAlerts;
+  console.log(`[alerts] Check complete: ${newAlerts.length} alert(s) detected`);
+}
+
+/** Add minutes to a HH:MM time string */
+function timeAdd(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number) as [number, number];
+  const total = h * 60 + m + minutes;
+  const newH = Math.floor(total / 60) % 24;
+  const newM = total % 60;
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+}
+
+/**
+ * Get current hour in UK timezone.
+ */
+function getUKHour(): number {
+  const ukTime = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false });
+  return parseInt(ukTime, 10);
+}
+
+function getUKMinute(): number {
+  const ukTime = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', minute: 'numeric' });
+  return parseInt(ukTime, 10);
+}
+
+/**
+ * Start all background jobs:
+ * - Timetable refresh: every 4 hours (6 AM, 10 AM, 2 PM, 6 PM UK), plus on startup
+ * - Alert check: 7:30 AM and 1:30 PM UK time
+ */
+export function startBackgroundJobs(): void {
+  // Immediate timetable population on startup
+  void refreshTimetableCache();
+
+  // Check every minute for scheduled jobs
+  setInterval(() => {
+    const hour = getUKHour();
+    const minute = getUKMinute();
+
+    // Timetable refresh at 6, 10, 14, 18 UK time (at minute 0)
+    if ([6, 10, 14, 18].includes(hour) && minute === 0) {
+      void refreshTimetableCache();
+    }
+
+    // Alert check at 7:30 and 13:30 UK time
+    if ((hour === 7 || hour === 13) && minute === 30) {
+      void checkForAlerts();
+    }
+  }, 60_000); // check every minute
+
+  console.log('[background] Background jobs started');
 }

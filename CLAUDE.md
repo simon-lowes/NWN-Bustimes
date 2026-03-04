@@ -14,12 +14,15 @@ Real-time bus departures and AI transit assistant for North West Norfolk.
 - **Build:** Vite for frontend, Dockerfile for production (multi-stage)
 
 ## Architecture
-- `server.ts` — Express entry point: `POST /api/ai/ask`, `GET /api/departures/:atcocode`, `GET /api/bustimes/*` proxy, static file serving
-- `server/departures.ts` — Server-side scraper: nextbuses.mobi (primary, real-time) → bustimes.org (fallback, timetable) with 60s in-memory cache
+- `server.ts` — Express entry point: `POST /api/ai/ask`, `GET /api/departures/:atcocode?live=true`, `GET /api/alerts`, `GET /api/bustimes/*` proxy, static file serving
+- `server/departures.ts` — Three-layer cache with background jobs:
+  - **Layer 1 (Timetable):** bustimes.org, 4-hour TTL, background refresh at 6/10/14/18 UK time + startup
+  - **Layer 2 (Live):** nextbuses.mobi, 5-minute TTL, on-demand when `?live=true`
+  - **Layer 3 (Alerts):** Compares live vs timetable at 7:30/13:30 UK time, exposed via `GET /api/alerts`
+  - 10-second cooldown between nextbuses.mobi requests (respects crawl-delay)
 - `server/aiService.ts` — Server-side Gemini logic with lazy SDK init (`getAi()` pattern)
-- `src/services/aiService.ts` — Thin fetch wrapper (client-side, no SDK)
-- `src/services/transportApi.ts` — Thin fetch wrapper for `/api/departures/:atcocode` (no mock data)
-- `src/hooks/useBusDepartures.ts` — Multi-stand fetch with DESTINATION_STOPS mapping, 60s poll interval
+- `src/services/transportApi.ts` — Thin fetch wrapper for departures + alerts (no mock data)
+- `src/hooks/useBusDepartures.ts` — On-demand fetch (no polling): fetches live on mount/destination change/manual refresh
 - `src/hooks/useAiAssistant.ts` — AI chat with AbortController
 - `src/components/ErrorBoundary.tsx` — React error boundary
 

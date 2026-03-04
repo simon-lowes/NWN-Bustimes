@@ -15,11 +15,23 @@ export interface StopDepartures {
   };
 }
 
+export interface Alert {
+  line: string;
+  stand: string;
+  message: string;
+  detectedAt: string;
+}
+
 export async function getLiveDepartures(
   atcocode: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  live = false
 ): Promise<StopDepartures> {
-  const res = await fetch(`/api/departures/${atcocode}`, { signal });
+  const url = live
+    ? `/api/departures/${atcocode}?live=true`
+    : `/api/departures/${atcocode}`;
+
+  const res = await fetch(url, { signal });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };
@@ -27,4 +39,14 @@ export async function getLiveDepartures(
   }
 
   return res.json() as Promise<StopDepartures>;
+}
+
+export async function getAlerts(signal?: AbortSignal): Promise<Alert[]> {
+  const res = await fetch('/api/alerts', { signal });
+
+  if (!res.ok) {
+    return [];
+  }
+
+  return res.json() as Promise<Alert[]>;
 }

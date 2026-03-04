@@ -14,7 +14,7 @@ const PRESETS = [
 
 export default function App() {
   const [targetDestination, setTargetDestination] = useState('Fairstead');
-  const { hunstantonDepartures, kingsLynnDepartures, isLoading, error, lastSync } =
+  const { hunstantonDepartures, kingsLynnDepartures, isLoading, error, lastSync, alerts, refresh } =
     useBusDepartures(targetDestination);
   const { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion } =
     useAiAssistant();
@@ -45,11 +45,20 @@ export default function App() {
           </div>
         </div>
         <div className="text-left md:text-right font-mono text-xs md:text-sm text-transit-white/50 max-w-xs uppercase tracking-widest leading-relaxed">
-          {lastSync ? (
-            <div className="text-transit-yellow">LAST_SYNC: {lastSync}</div>
-          ) : (
-            <div>CONNECTING_TO_GRID...</div>
-          )}
+          <div className="flex items-center gap-3 justify-start md:justify-end mb-2">
+            {lastSync ? (
+              <span className="text-transit-yellow">LAST_SYNC: {lastSync}</span>
+            ) : (
+              <span>CONNECTING_TO_GRID...</span>
+            )}
+            <button
+              onClick={refresh}
+              disabled={isLoading}
+              className="text-transit-black bg-transit-yellow hover:bg-transit-white px-2 py-0.5 font-bold text-xs transition-colors disabled:opacity-50"
+            >
+              REFRESH
+            </button>
+          </div>
           Realtime routing and connection protocol for Hunstanton and King's Lynn terminals.
         </div>
       </motion.header>
@@ -58,6 +67,19 @@ export default function App() {
 
         {/* Left Column: The Boards */}
         <div className="xl:col-span-7 flex flex-col gap-8">
+          {alerts.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="brutal-border p-4 bg-transit-orange text-transit-black font-mono text-sm uppercase tracking-widest space-y-2"
+            >
+              <div className="font-bold text-base">ALERT_DETECTED:</div>
+              {alerts.map((alert, idx) => (
+                <div key={idx}>{`>`} {alert.message}</div>
+              ))}
+            </motion.div>
+          )}
+
           <BusCard
             title="Hunstanton"
             subtitle="King's Lynn"

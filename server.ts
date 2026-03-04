@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { askBusQuestion } from './server/aiService.js';
-import { getDepartures } from './server/departures.js';
+import { getDepartures, getAlerts, startBackgroundJobs } from './server/departures.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -29,15 +29,21 @@ app.post('/api/ai/ask', async (req, res) => {
   }
 });
 
-// Real-time departures — scrapes nextbuses.mobi + bustimes.org fallback
+// Real-time departures — timetable baseline or live on-demand
 app.get('/api/departures/:atcocode', async (req, res) => {
   try {
-    const data = await getDepartures(req.params.atcocode);
+    const live = req.query.live === 'true';
+    const data = await getDepartures(req.params.atcocode, { live });
     res.json(data);
   } catch (err) {
     console.error('Departures fetch failed:', err);
     res.status(502).json({ error: 'No departure data available' });
   }
+});
+
+// Alerts — cancellations detected by background comparison
+app.get('/api/alerts', (_req, res) => {
+  res.json(getAlerts());
 });
 
 // Bustimes.org proxy — relays requests to avoid CORS issues in production
@@ -74,6 +80,9 @@ app.use(express.static(distPath));
 app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
+
+// Start background timetable refresh + alert checks
+startBackgroundJobs();
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
