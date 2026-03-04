@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- FINAL_SERVICE showing wrong last bus (e.g. 17:50 instead of 22:05) because `getDepartures(live=true)` returned only nextbuses.mobi data (~5-10 upcoming departures), discarding the full-day timetable
+- NEXT_DEPARTURE could show past departure times (e.g. 06:40 in the afternoon)
+
+### Changed
+
+- `getDepartures()` now uses timetable as the base dataset; live data overlays real-time delay info onto timetable entries instead of replacing them
+- Past departures are filtered server-side (UK timezone) before returning — `departures[0]` is always the next upcoming bus
+- New `mergeDepartures()` matches live data to timetable entries by line + aimed time within 10 minutes, with midnight-wrap safety
+
 ### Added
 
 - Three-layer smart caching strategy replacing continuous 60s polling
