@@ -86,6 +86,27 @@ async function waitForCooldown(source: string): Promise<void> {
 
 // --- Helpers ---
 
+function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number) as [number, number];
+  return h * 60 + m;
+}
+
+function timeDiffMinutes(a: string, b: string): number {
+  const am = timeToMinutes(a);
+  const bm = timeToMinutes(b);
+  const diff = Math.abs(am - bm);
+  return Math.min(diff, 1440 - diff); // handles midnight wrap
+}
+
+function getUKTimeNow(): string {
+  return new Date().toLocaleString('en-GB', {
+    timeZone: 'Europe/London',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 function todayStr(): string {
   return new Date().toISOString().split('T')[0] ?? '';
 }
@@ -117,6 +138,95 @@ function groupByLine(departures: BusDeparture[]): Record<string, BusDeparture[]>
     }
   }
   return grouped;
+}
+
+// --- Merge & Filter ---
+
+/**
+ * Remove departures whose best_departure_estimate is in the past (UK time).
+ * Departures dated tomorrow are kept regardless.
+ */
+function filterPastDepartures(stop: StopDepartures): StopDepartures {
+  const now = getUKTimeNow();
+  const today = todayStr();
+  const filtered: Record<string, BusDeparture[]> = {};
+
+  for (const [line, deps] of Object.entries(stop.departures)) {
+    const kept = deps.filter(
+      (dep) => dep.date !== today || dep.best_departure_estimate >= now
+    );
+    if (kept.length > 0) {
+      filtered[line] = kept;
+    }
+  }
+
+  return { ...stop, departures: filtered };
+}
+
+/**
+ * Overlay live data onto timetable base.
+ * For each timetabled departure, find the closest live departure with the same
+ * line and aimed time within 10 minutes. If matched, overlay live timing.
+ * Unmatched live departures are appended as extras.
+ */
+function mergeDepartures(
+  timetable: StopDepartures,
+  live: StopDepartures
+): StopDepartures {
+  const merged: Record<string, BusDeparture[]> = {};
+
+  // Process each timetable line
+  for (const [line, timetabledDeps] of Object.entries(timetable.departures)) {
+    const liveDeps = live.departures[line] ? [...live.departures[line]] : [];
+    const used = new Set<number>();
+    const result: BusDeparture[] = [];
+
+    for (const ttDep of timetabledDeps) {
+      let bestIdx = -1;
+      let bestDiff = Infinity;
+
+      for (let i = 0; i < liveDeps.length; i++) {
+        if (used.has(i)) continue;
+        const diff = timeDiffMinutes(ttDep.aimed_departure_time, liveDeps[i]!.aimed_departure_time);
+        if (diff <= 10 && diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = i;
+        }
+      }
+
+      if (bestIdx >= 0) {
+        const liveDep = liveDeps[bestIdx]!;
+        used.add(bestIdx);
+        result.push({
+          ...ttDep,
+          expected_departure_time: liveDep.expected_departure_time,
+          best_departure_estimate: liveDep.best_departure_estimate,
+        });
+      } else {
+        result.push(ttDep);
+      }
+    }
+
+    // Append unmatched live departures as extras
+    for (let i = 0; i < liveDeps.length; i++) {
+      if (!used.has(i)) {
+        result.push(liveDeps[i]!);
+      }
+    }
+
+    // Sort by aimed_departure_time
+    result.sort((a, b) => timeToMinutes(a.aimed_departure_time) - timeToMinutes(b.aimed_departure_time));
+    merged[line] = result;
+  }
+
+  // Lines in live data but not in timetable — pass through
+  for (const [line, liveDeps] of Object.entries(live.departures)) {
+    if (!merged[line]) {
+      merged[line] = liveDeps;
+    }
+  }
+
+  return { ...timetable, departures: merged };
 }
 
 /**
@@ -250,50 +360,53 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
 
 /**
  * Get departures for a stop.
- * - live=false (default): returns timetable cache (bustimes.org background data)
- * - live=true: returns nextbuses.mobi real-time data (on-demand, with cooldown)
+ * Timetable is always the base dataset. Live data overlays real-time info.
+ * Past departures are filtered before returning.
+ *
+ * - live=false (default): timetable only, filtered
+ * - live=true: timetable + live overlay, filtered
  */
 export async function getDepartures(
   atcocode: string,
   options: { live?: boolean } = {}
 ): Promise<StopDepartures> {
   const { live = false } = options;
+  const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
+  const empty: StopDepartures = { atcocode, name, departures: {} };
+
+  // Always start with timetable as the base
+  const timetableEntry = timetableCache.get(atcocode);
+  let base: StopDepartures = timetableEntry?.data ?? empty;
 
   if (live) {
     // Check live cache first
+    let liveData: StopDepartures | null = null;
     const cached = liveCache.get(atcocode);
+
     if (cached && cached.expires > Date.now()) {
-      return cached.data;
+      liveData = cached.data;
+    } else {
+      // Fetch from nextbuses.mobi with cooldown enforcement
+      await waitForCooldown('nextbuses');
+      markRequested('nextbuses');
+
+      const result = await fetchNextBuses(atcocode).catch((err) => {
+        console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
+        return null;
+      });
+
+      if (result) {
+        liveCache.set(atcocode, { data: result, expires: Date.now() + LIVE_TTL });
+        liveData = result;
+      }
     }
 
-    // Fetch from nextbuses.mobi with cooldown enforcement
-    await waitForCooldown('nextbuses');
-    markRequested('nextbuses');
-
-    const result = await fetchNextBuses(atcocode).catch((err) => {
-      console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
-      return null;
-    });
-
-    if (result) {
-      liveCache.set(atcocode, { data: result, expires: Date.now() + LIVE_TTL });
-      return result;
-    }
-
-    // Live fetch failed — fall back to timetable cache
-    const timetable = timetableCache.get(atcocode);
-    if (timetable) return timetable.data;
-  } else {
-    // Return timetable cache directly
-    const cached = timetableCache.get(atcocode);
-    if (cached && cached.expires > Date.now()) {
-      return cached.data;
+    if (liveData) {
+      base = mergeDepartures(base, liveData);
     }
   }
 
-  // Nothing cached — return empty
-  const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
-  return { atcocode, name, departures: {} };
+  return filterPastDepartures(base);
 }
 
 // --- Background Jobs ---
