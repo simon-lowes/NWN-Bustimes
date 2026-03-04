@@ -127,13 +127,10 @@ export async function fetchNextBuses(atcocode: string): Promise<StopDepartures |
     departures.push(makeDeparture(line, direction, time, today));
   });
 
-  // Check "0 departures" in heading — return empty rather than null
+  // If no departures parsed, always fall through to bustimes.org —
+  // nextbuses "0 departures" may just mean it doesn't track this stop.
   if (departures.length === 0) {
-    const zeroMatch = $('h5').text().includes('0 departures');
-    if (zeroMatch) {
-      return { atcocode, name, departures: {} };
-    }
-    return null; // couldn't parse anything — let fallback try
+    return null;
   }
 
   return { atcocode, name, departures: groupByLine(departures) };
@@ -187,7 +184,8 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
 }
 
 /**
- * Orchestrator: cache → nextbuses → bustimes → throw
+ * Orchestrator: fetch both sources in parallel, prefer nextbuses (real-time)
+ * but use bustimes when nextbuses has nothing.
  */
 export async function getDepartures(atcocode: string): Promise<StopDepartures> {
   // Check cache
@@ -196,27 +194,29 @@ export async function getDepartures(atcocode: string): Promise<StopDepartures> {
     return cached.data;
   }
 
-  // Try nextbuses.mobi first
-  try {
-    const result = await fetchNextBuses(atcocode);
-    if (result) {
-      cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
-      return result;
-    }
-  } catch (err) {
-    console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
+  // Fetch both sources in parallel
+  const [nextbusesResult, bustimesResult] = await Promise.all([
+    fetchNextBuses(atcocode).catch((err) => {
+      console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
+      return null;
+    }),
+    fetchBustimesXhr(atcocode).catch((err) => {
+      console.warn(`bustimes.org failed for ${atcocode}:`, err);
+      return null;
+    }),
+  ]);
+
+  // Prefer nextbuses (has real-time "in X mins"), fall back to bustimes
+  const result = nextbusesResult ?? bustimesResult;
+
+  if (result) {
+    cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
+    return result;
   }
 
-  // Fallback to bustimes.org
-  try {
-    const result = await fetchBustimesXhr(atcocode);
-    if (result) {
-      cache.set(atcocode, { data: result, expires: Date.now() + CACHE_TTL });
-      return result;
-    }
-  } catch (err) {
-    console.warn(`bustimes.org failed for ${atcocode}:`, err);
-  }
-
-  throw new Error(`No departure data available for stop ${atcocode}`);
+  // Both returned null — genuinely no departures
+  const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
+  const empty: StopDepartures = { atcocode, name, departures: {} };
+  cache.set(atcocode, { data: empty, expires: Date.now() + CACHE_TTL });
+  return empty;
 }
