@@ -49,5 +49,13 @@ export function useAiAssistant() {
     }
   };
 
-  return { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion };
+  const clearResponse = () => {
+    abortRef.current?.abort();
+    setQuery('');
+    setAiResponse(null);
+    setAiError(null);
+    setIsAiLoading(false);
+  };
+
+  return { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion, clearResponse };
 }

@@ -16,7 +16,7 @@ export default function App() {
   const [targetDestination, setTargetDestination] = useState('Fairstead');
   const { hunstantonDepartures, kingsLynnDepartures, isLoading, error, lastSync, alerts, refresh } =
     useBusDepartures(targetDestination);
-  const { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion } =
+  const { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion, clearResponse } =
     useAiAssistant();
 
   const chatRef = useRef<HTMLDivElement>(null);
@@ -52,7 +52,7 @@ export default function App() {
               <span>CONNECTING_TO_GRID...</span>
             )}
             <button
-              onClick={refresh}
+              onClick={() => { clearResponse(); refresh(); }}
               disabled={isLoading}
               className="text-transit-black bg-transit-yellow hover:bg-transit-white px-2 py-0.5 font-bold text-xs transition-colors disabled:opacity-50"
             >
