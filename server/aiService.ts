@@ -38,7 +38,15 @@ export async function askBusQuestion(
   location?: { lat: number; lng: number }
 ): Promise<AiResponse> {
   const now = new Date();
-  const timeString = now.toLocaleString('en-GB', { timeZone: 'Europe/London' });
+  const timeString = now.toLocaleString('en-GB', {
+    timeZone: 'Europe/London',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 
   const prompt = `
 Current Date and Time (UK): ${timeString}

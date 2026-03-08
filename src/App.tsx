@@ -146,7 +146,7 @@ export default function App() {
 
             {/* Terminal Body */}
             <div className="p-6 flex-1 flex flex-col relative z-10 overflow-y-auto">
-              <div className="font-mono text-sm md:text-base text-transit-white/60 mb-8 space-y-1 tracking-widest uppercase">
+              <div className="font-mono text-base md:text-lg text-transit-white/60 mb-8 space-y-1 tracking-widest uppercase">
                 <p>{'>'} INITIALIZING SMART TRANSIT ASSISTANT...</p>
                 <p>{'>'} LOADED CONSTITUENCY DATA.</p>
                 <p>{'>'} AWAITING QUERY.</p>
@@ -159,7 +159,7 @@ export default function App() {
                       key={idx}
                       onClick={() => handleAskQuestion(preset, idx === 0)}
                       aria-label={preset}
-                      className="font-mono text-xs md:text-sm border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-2 text-left transition-all duration-200 uppercase tracking-wider"
+                      className="font-mono text-sm md:text-base border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-3 text-left transition-all duration-200 uppercase tracking-wider"
                     >
                       [{idx + 1}] {preset}
                     </button>
@@ -168,7 +168,7 @@ export default function App() {
               )}
 
               {/* Chat Area */}
-              <div ref={chatRef} className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-sm md:text-base terminal-scroll">
+              <div ref={chatRef} className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-base md:text-lg terminal-scroll">
                 {aiError && (
                   <div className="text-transit-orange tracking-widest" role="alert">{'>'} ERR: {aiError}</div>
                 )}
@@ -180,7 +180,7 @@ export default function App() {
                     className="border-l-4 border-transit-yellow pl-4"
                   >
                     <div className="text-transit-yellow mb-4 font-bold tracking-widest">{'>'} RESPONSE_GENERATED:</div>
-                    <div className="prose prose-invert prose-p:leading-relaxed prose-a:text-transit-yellow hover:prose-a:text-transit-white max-w-none font-mono text-sm md:text-base tracking-wide">
+                    <div className="prose prose-invert prose-p:leading-relaxed prose-a:text-transit-yellow hover:prose-a:text-transit-white max-w-none font-mono text-base md:text-lg tracking-wide">
                       <Markdown>{aiResponse.text}</Markdown>
                     </div>
 
