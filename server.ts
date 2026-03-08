@@ -81,9 +81,9 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-// Start background timetable refresh + alert checks
-startBackgroundJobs();
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+// Populate timetable cache before accepting requests, then start scheduled jobs
+startBackgroundJobs().then(() => {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 });

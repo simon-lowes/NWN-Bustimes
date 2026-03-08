@@ -580,9 +580,9 @@ function getUKMinute(): number {
  * - Timetable refresh: every 4 hours (6 AM, 10 AM, 2 PM, 6 PM UK), plus on startup
  * - Alert check: 7:30 AM and 1:30 PM UK time
  */
-export function startBackgroundJobs(): void {
-  // Immediate timetable population on startup
-  void refreshTimetableCache();
+export async function startBackgroundJobs(): Promise<void> {
+  // Block until initial timetable cache is populated — prevents empty AI responses
+  await refreshTimetableCache();
 
   // Check every minute for scheduled jobs
   setInterval(() => {
