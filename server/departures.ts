@@ -108,7 +108,12 @@ function getUKTimeNow(): string {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().split('T')[0] ?? '';
+  // Use UK timezone, not UTC — avoids off-by-one during BST (midnight-1am)
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).formatToParts(new Date());
+  const year = parts.find((p) => p.type === 'year')?.value ?? '2026';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '01';
+  const day = parts.find((p) => p.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
 }
 
 function makeDeparture(
@@ -374,9 +379,11 @@ export async function getDepartures(
   const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
   const empty: StopDepartures = { atcocode, name, departures: {} };
 
-  // Always start with timetable as the base
+  // Always start with timetable as the base (but not if expired)
   const timetableEntry = timetableCache.get(atcocode);
-  let base: StopDepartures = timetableEntry?.data ?? empty;
+  let base: StopDepartures = (timetableEntry && timetableEntry.expires > Date.now())
+    ? timetableEntry.data
+    : empty;
 
   if (live) {
     // Check live cache first
@@ -407,6 +414,37 @@ export async function getDepartures(
   }
 
   return filterPastDepartures(base);
+}
+
+/**
+ * Build a plain-text summary of current departures for all stops.
+ * Used to ground the AI assistant in real data so it cannot hallucinate schedules.
+ */
+export async function getDepartureSummary(): Promise<string> {
+  const lines: string[] = [];
+
+  for (const atcocode of ALL_ATCO_CODES) {
+    const data = await getDepartures(atcocode, { live: false });
+    const stopName = data.name;
+    const allDeps = Object.entries(data.departures);
+
+    if (allDeps.length === 0) {
+      lines.push(`${stopName}: No upcoming departures found.`);
+      continue;
+    }
+
+    const depStrings: string[] = [];
+    for (const [line, deps] of allDeps) {
+      const times = deps.slice(0, 4).map((d) => {
+        const dir = d.direction !== 'Unknown' ? ` to ${d.direction}` : '';
+        return `${d.aimed_departure_time}${dir}`;
+      });
+      depStrings.push(`  Route ${line}: ${times.join(', ')}`);
+    }
+    lines.push(`${stopName}:\n${depStrings.join('\n')}`);
+  }
+
+  return lines.join('\n\n');
 }
 
 // --- Background Jobs ---

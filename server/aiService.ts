@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { getDepartureSummary } from './departures.js';
 
 let ai: GoogleGenAI | null = null;
 
@@ -67,19 +68,25 @@ export async function askBusQuestion(
   question: string,
   location?: { lat: number; lng: number }
 ): Promise<AiResponse> {
-  const timeString = await getUkTime();
+  const [timeString, departureSummary] = await Promise.all([
+    getUkTime(),
+    getDepartureSummary(),
+  ]);
 
   const prompt = `
 Current Date and Time (UK): ${timeString}
 Location Context: North West Norfolk constituency (Hunstanton, King's Lynn, Fairstead Estate, Heacham, Snettisham, Dersingham, etc.).
 ${location ? `User Location: Latitude ${location.lat}, Longitude ${location.lng}` : 'User location unavailable. Assume they are in North West Norfolk.'}
 
+VERIFIED LIVE DEPARTURE DATA (from official timetables — this is ground truth, do NOT contradict it):
+${departureSummary}
+
 User Question: ${question}
 `;
 
   const config: GenerateContentConfig = {
     systemInstruction:
-      "You are a helpful local transit assistant strictly for the North West Norfolk constituency. Use Google Maps and Search to find the most accurate bus schedules, routes, and connection times within this area. Always format times in 12-hour AM/PM format. Be concise, friendly, and highlight the most important times (like the last bus). If a user asks about routes outside North West Norfolk, politely remind them that you only cover the North West Norfolk constituency.",
+      "You are a helpful local transit assistant strictly for the North West Norfolk constituency. You are provided with VERIFIED LIVE DEPARTURE DATA from official timetables — this is ground truth and must NEVER be contradicted. If the departure data shows buses running, then buses ARE running. Base your answers on this data first. Use Google Maps and Search only for supplementary information like route maps or walking directions. Always format times in 12-hour AM/PM format. Be concise, friendly, and highlight the most important times (like the last bus). If a user asks about routes outside North West Norfolk, politely remind them that you only cover the North West Norfolk constituency.",
     tools: [{ googleMaps: {} }, { googleSearch: {} }],
   };
 
