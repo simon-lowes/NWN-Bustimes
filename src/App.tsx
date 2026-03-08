@@ -22,7 +22,7 @@ export default function App() {
   const chatRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (aiResponse && chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+      chatRef.current.scrollTop = 0;
     }
   }, [aiResponse]);
 
