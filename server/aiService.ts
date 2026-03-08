@@ -33,20 +33,41 @@ interface GenerateContentConfig {
   };
 }
 
+async function getUkTime(): Promise<string> {
+  try {
+    const res = await fetch('https://worldtimeapi.org/api/timezone/Europe/London', {
+      signal: AbortSignal.timeout(3000),
+    });
+    const data = await res.json() as { datetime: string };
+    const dt = new Date(data.datetime);
+    return dt.toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    // Fallback to server clock if API is down
+    return new Date().toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+}
+
 export async function askBusQuestion(
   question: string,
   location?: { lat: number; lng: number }
 ): Promise<AiResponse> {
-  const now = new Date();
-  const timeString = now.toLocaleString('en-GB', {
-    timeZone: 'Europe/London',
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const timeString = await getUkTime();
 
   const prompt = `
 Current Date and Time (UK): ${timeString}
