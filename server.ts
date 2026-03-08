@@ -29,11 +29,10 @@ app.post('/api/ai/ask', async (req, res) => {
   }
 });
 
-// Real-time departures — timetable baseline or live on-demand
+// Departures — timetable only (live data used exclusively for alert detection)
 app.get('/api/departures/:atcocode', async (req, res) => {
   try {
-    const live = req.query.live === 'true';
-    const data = await getDepartures(req.params.atcocode, { live });
+    const data = await getDepartures(req.params.atcocode);
     res.json(data);
   } catch (err) {
     console.error('Departures fetch failed:', err);

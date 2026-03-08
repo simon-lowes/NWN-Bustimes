@@ -25,13 +25,8 @@ export interface Alert {
 export async function getLiveDepartures(
   atcocode: string,
   signal?: AbortSignal,
-  live = false
 ): Promise<StopDepartures> {
-  const url = live
-    ? `/api/departures/${atcocode}?live=true`
-    : `/api/departures/${atcocode}`;
-
-  const res = await fetch(url, { signal });
+  const res = await fetch(`/api/departures/${atcocode}`, { signal });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };

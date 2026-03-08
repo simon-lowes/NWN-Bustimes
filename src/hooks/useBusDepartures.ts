@@ -26,7 +26,7 @@ export function useBusDepartures(targetDestination: string) {
 
   const controllerRef = useRef<AbortController | null>(null);
 
-  const fetchBuses = useCallback(async (live: boolean) => {
+  const fetchBuses = useCallback(async () => {
     // Abort any in-flight request
     controllerRef.current?.abort();
     const controller = new AbortController();
@@ -38,7 +38,7 @@ export function useBusDepartures(targetDestination: string) {
       // Hunstanton: fetch both departure stands in parallel, filter for King's Lynn bound
       const hunstantonResults = await Promise.all(
         HUNSTANTON_STANDS.map((code) =>
-          getLiveDepartures(code, controller.signal, live).catch(() => null)
+          getLiveDepartures(code, controller.signal).catch(() => null)
         )
       );
       const hunstantonBuses: BusDeparture[] = [];
@@ -61,7 +61,7 @@ export function useBusDepartures(targetDestination: string) {
       const stands = DESTINATION_STOPS[targetDestination] ?? [];
       const standResults = await Promise.all(
         stands.map((code) =>
-          getLiveDepartures(code, controller.signal, live).catch(() => null)
+          getLiveDepartures(code, controller.signal).catch(() => null)
         )
       );
 
@@ -76,8 +76,7 @@ export function useBusDepartures(targetDestination: string) {
       allKLBuses.sort((a, b) => a.aimed_departure_time.localeCompare(b.aimed_departure_time));
       setKingsLynnDepartures(allKLBuses);
 
-      const label = live ? 'LIVE' : 'TIMETABLE';
-      setLastSync(`${new Date().toLocaleTimeString('en-GB', { hour12: true })} [${label}]`);
+      setLastSync(`${new Date().toLocaleTimeString('en-GB', { hour12: true })} [TIMETABLE]`);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setError('ERR_FETCH_FAIL');
@@ -99,7 +98,7 @@ export function useBusDepartures(targetDestination: string) {
 
   // On mount + destination change: fetch timetable baseline, then live overlay
   useEffect(() => {
-    void fetchBuses(true);
+    void fetchBuses();
     void fetchAlerts();
 
     return () => {
@@ -107,9 +106,8 @@ export function useBusDepartures(targetDestination: string) {
     };
   }, [fetchBuses, fetchAlerts]);
 
-  // Manual refresh — fetches live data
   const refresh = useCallback(() => {
-    void fetchBuses(true);
+    void fetchBuses();
     void fetchAlerts();
   }, [fetchBuses, fetchAlerts]);
 

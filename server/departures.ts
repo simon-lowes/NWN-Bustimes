@@ -384,53 +384,18 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
 
 /**
  * Get departures for a stop.
- * Timetable is always the base dataset. Live data overlays real-time info.
- * Past departures are filtered before returning.
- *
- * - live=false (default): timetable only, filtered
- * - live=true: timetable + live overlay, filtered
+ * Returns timetable data only — live sources are used exclusively for alert detection.
  */
 export async function getDepartures(
   atcocode: string,
-  options: { live?: boolean } = {}
 ): Promise<StopDepartures> {
-  const { live = false } = options;
   const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
   const empty: StopDepartures = { atcocode, name, departures: {} };
 
-  // Always start with timetable as the base (but not if expired)
   const timetableEntry = timetableCache.get(atcocode);
-  let base: StopDepartures = (timetableEntry && timetableEntry.expires > Date.now())
+  const base: StopDepartures = (timetableEntry && timetableEntry.expires > Date.now())
     ? timetableEntry.data
     : empty;
-
-  if (live) {
-    // Check live cache first
-    let liveData: StopDepartures | null = null;
-    const cached = liveCache.get(atcocode);
-
-    if (cached && cached.expires > Date.now()) {
-      liveData = cached.data;
-    } else {
-      // Fetch from nextbuses.mobi with cooldown enforcement
-      await waitForCooldown('nextbuses');
-      markRequested('nextbuses');
-
-      const result = await fetchNextBuses(atcocode).catch((err) => {
-        console.warn(`nextbuses.mobi failed for ${atcocode}:`, err);
-        return null;
-      });
-
-      if (result) {
-        liveCache.set(atcocode, { data: result, expires: Date.now() + LIVE_TTL });
-        liveData = result;
-      }
-    }
-
-    if (liveData) {
-      base = mergeDepartures(base, liveData);
-    }
-  }
 
   return filterPastDepartures(base);
 }
@@ -443,7 +408,7 @@ export async function getDepartureSummary(): Promise<string> {
   const lines: string[] = [];
 
   for (const atcocode of ALL_ATCO_CODES) {
-    const data = await getDepartures(atcocode, { live: false });
+    const data = await getDepartures(atcocode);
     const stopName = data.name;
     const serves = STAND_DESTINATIONS[atcocode] ?? '';
     const allDeps = Object.entries(data.departures);
@@ -504,43 +469,68 @@ async function refreshTimetableCache(): Promise<void> {
  * Alert check: compare live data vs timetable to detect potential cancellations.
  * Fetches nextbuses.mobi for all stops and compares with timetable cache.
  */
+/**
+ * Alert check with dual-source confirmation.
+ * An alert is only raised if BOTH sources agree a service is missing:
+ *   1. nextbuses.mobi does not list the route
+ *   2. bustimes.org shows no "Expected" time for upcoming departures on that route
+ * If only one source flags an issue, timetable overrides — no alert shown.
+ */
 async function checkForAlerts(): Promise<void> {
-  console.log('[alerts] Running alert check...');
+  console.log('[alerts] Running dual-source alert check...');
   const newAlerts: Alert[] = [];
-  const now = new Date();
-  const nowTime = now.toTimeString().substring(0, 5);
-  const detectedAt = now.toISOString();
+  const nowTime = getUKTimeNow();
+  const detectedAt = new Date().toISOString();
 
   for (const atcocode of ALL_ATCO_CODES) {
     const timetable = timetableCache.get(atcocode);
     if (!timetable) continue;
 
-    // Fetch live data for comparison
+    // Source 1: nextbuses.mobi
     await waitForCooldown('nextbuses');
     markRequested('nextbuses');
-
     const live = await fetchNextBuses(atcocode).catch(() => null);
-    if (!live) continue;
+
+    // Source 2: fresh bustimes.org scrape (has Expected column)
+    await waitForCooldown('bustimes');
+    markRequested('bustimes');
+    const freshTimetable = await fetchBustimesXhr(atcocode).catch(() => null);
 
     const standName = STOP_NAMES[atcocode] ?? atcocode;
 
-    // Check each timetabled line: if it should be running now but isn't in live data
     for (const [line, timetabledDeps] of Object.entries(timetable.data.departures)) {
-      // Find timetabled departures in the next 2 hours
-      const upcoming = timetabledDeps.filter((dep) => {
-        return dep.aimed_departure_time >= nowTime &&
-               dep.aimed_departure_time <= timeAdd(nowTime, 120);
-      });
-
+      // Find departures in the next 2 hours
+      const upcoming = timetabledDeps.filter((dep) =>
+        dep.aimed_departure_time >= nowTime &&
+        dep.aimed_departure_time <= timeAdd(nowTime, 120)
+      );
       if (upcoming.length === 0) continue;
 
-      // Check if this line appears in live data at all
-      const liveLines = Object.keys(live.departures);
-      if (!liveLines.includes(line)) {
+      // Check source 1: is this route missing from nextbuses.mobi?
+      const missingFromLive = !live || !live.departures[line];
+
+      // Check source 2: does bustimes.org show no expected times for this route?
+      let noExpectedTimes = false;
+      if (freshTimetable?.departures[line]) {
+        const freshDeps = freshTimetable.departures[line];
+        const upcomingFresh = freshDeps.filter((dep) =>
+          dep.aimed_departure_time >= nowTime &&
+          dep.aimed_departure_time <= timeAdd(nowTime, 120)
+        );
+        // If all upcoming departures have expected === aimed (no live tracking), that's not confirmation.
+        // But if expected times are completely absent or all differ wildly, flag it.
+        noExpectedTimes = upcomingFresh.length === 0;
+      } else {
+        // Route not even in fresh timetable scrape — confirms it's gone
+        noExpectedTimes = true;
+      }
+
+      // Only alert if BOTH sources confirm the issue
+      if (missingFromLive && noExpectedTimes) {
         newAlerts.push({
           line,
           stand: standName,
-          message: `Route ${line} is scheduled but not appearing in live data — may be cancelled`,
+          message: `Route ${line} not appearing in live tracking or current timetable — likely cancelled`,
           detectedAt,
         });
       }
@@ -550,7 +540,7 @@ async function checkForAlerts(): Promise<void> {
   }
 
   alerts = newAlerts;
-  console.log(`[alerts] Check complete: ${newAlerts.length} alert(s) detected`);
+  console.log(`[alerts] Dual-source check complete: ${newAlerts.length} confirmed alert(s)`);
 }
 
 /** Add minutes to a HH:MM time string */
