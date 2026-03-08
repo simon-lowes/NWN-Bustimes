@@ -33,6 +33,16 @@ const STOP_NAMES: Record<string, string> = {
   '2900K13144': "King's Lynn Transport Interchange (Stand H)",
 };
 
+// What destinations each King's Lynn stand serves — critical for AI context
+const STAND_DESTINATIONS: Record<string, string> = {
+  '2900H5315': 'buses to King\'s Lynn',
+  '2900H5314': 'buses to Fakenham',
+  '2900K13139': 'buses to West Lynn (routes 2, 3)',
+  '2900K13141': 'buses to Hospital, South Wootton, North Wootton, Hunstanton (routes 33-36)',
+  '2900K13143': 'buses to Fairstead Estate (routes 41, 42)',
+  '2900K13144': 'buses to Gaywood, Hospital (routes 3H, 4, 5, 32, 47)',
+};
+
 // All ATCO codes this app cares about
 const ALL_ATCO_CODES = Object.keys(STOP_NAMES);
 
@@ -435,10 +445,11 @@ export async function getDepartureSummary(): Promise<string> {
   for (const atcocode of ALL_ATCO_CODES) {
     const data = await getDepartures(atcocode, { live: false });
     const stopName = data.name;
+    const serves = STAND_DESTINATIONS[atcocode] ?? '';
     const allDeps = Object.entries(data.departures);
 
     if (allDeps.length === 0) {
-      lines.push(`${stopName}: No upcoming departures found.`);
+      lines.push(`${stopName} (${serves}): No upcoming departures found.`);
       continue;
     }
 
@@ -456,7 +467,7 @@ export async function getDepartureSummary(): Promise<string> {
       }
       depStrings.push(`  Route ${line}: ${times.join(', ')} (LAST: ${times[times.length - 1]})`);
     }
-    lines.push(`${stopName}:\n${depStrings.join('\n')}`);
+    lines.push(`${stopName} (${serves}):\n${depStrings.join('\n')}`);
   }
 
   return lines.join('\n\n');
