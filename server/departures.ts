@@ -421,14 +421,15 @@ export async function getDepartureSummary(): Promise<string> {
     const depStrings: string[] = [];
     for (const [line, deps] of allDeps) {
       // Deduplicate by aimed time and show ALL departures (last bus is critical)
+      // Deduplicate by aimed time — omit scraped direction (it's often wrong,
+      // e.g. "King's Lynn" for buses leaving King's Lynn). The stand label
+      // already tells the AI the correct destination.
       const seen = new Set<string>();
       const times: string[] = [];
       for (const d of deps) {
-        const key = d.aimed_departure_time;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const dir = d.direction !== 'Unknown' ? ` to ${d.direction}` : '';
-        times.push(`${d.aimed_departure_time}${dir}`);
+        if (seen.has(d.aimed_departure_time)) continue;
+        seen.add(d.aimed_departure_time);
+        times.push(d.aimed_departure_time);
       }
       depStrings.push(`  Route ${line}: ${times.join(', ')} (LAST: ${times[times.length - 1]})`);
     }
