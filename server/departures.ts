@@ -357,10 +357,19 @@ export async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures
     });
   });
 
-  if (departures.length === 0) return null;
+  // Deduplicate: bustimes.org sometimes returns duplicate rows with different trip IDs
+  const seen = new Set<string>();
+  const deduped = departures.filter((d) => {
+    const key = `${d.line}|${d.aimed_departure_time}|${d.direction}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (deduped.length === 0) return null;
 
   const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
-  return { atcocode, name, departures: groupByLine(departures) };
+  return { atcocode, name, departures: groupByLine(deduped) };
 }
 
 /**
@@ -435,11 +444,17 @@ export async function getDepartureSummary(): Promise<string> {
 
     const depStrings: string[] = [];
     for (const [line, deps] of allDeps) {
-      const times = deps.slice(0, 4).map((d) => {
+      // Deduplicate by aimed time and show ALL departures (last bus is critical)
+      const seen = new Set<string>();
+      const times: string[] = [];
+      for (const d of deps) {
+        const key = d.aimed_departure_time;
+        if (seen.has(key)) continue;
+        seen.add(key);
         const dir = d.direction !== 'Unknown' ? ` to ${d.direction}` : '';
-        return `${d.aimed_departure_time}${dir}`;
-      });
-      depStrings.push(`  Route ${line}: ${times.join(', ')}`);
+        times.push(`${d.aimed_departure_time}${dir}`);
+      }
+      depStrings.push(`  Route ${line}: ${times.join(', ')} (LAST: ${times[times.length - 1]})`);
     }
     lines.push(`${stopName}:\n${depStrings.join('\n')}`);
   }
