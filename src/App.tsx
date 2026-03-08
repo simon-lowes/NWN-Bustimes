@@ -159,7 +159,7 @@ export default function App() {
                       key={idx}
                       onClick={() => handleAskQuestion(preset, idx === 0)}
                       aria-label={preset}
-                      className="font-mono text-sm md:text-base border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-3 text-left transition-all duration-200 uppercase tracking-wider"
+                      className="font-mono text-lg md:text-xl border-2 border-transit-white/30 hover:border-transit-yellow hover:text-transit-yellow hover:bg-transit-yellow/10 p-4 text-left transition-all duration-200"
                     >
                       [{idx + 1}] {preset}
                     </button>
@@ -168,7 +168,7 @@ export default function App() {
               )}
 
               {/* Chat Area */}
-              <div ref={chatRef} className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-base md:text-lg terminal-scroll">
+              <div ref={chatRef} className="flex-1 overflow-y-auto mb-6 pr-4 space-y-6 font-mono text-lg md:text-xl terminal-scroll">
                 {aiError && (
                   <div className="text-transit-orange tracking-widest" role="alert">{'>'} ERR: {aiError}</div>
                 )}
@@ -180,7 +180,7 @@ export default function App() {
                     className="border-l-4 border-transit-yellow pl-4"
                   >
                     <div className="text-transit-yellow mb-4 font-bold tracking-widest">{'>'} RESPONSE_GENERATED:</div>
-                    <div className="prose prose-invert prose-p:leading-relaxed prose-a:text-transit-yellow hover:prose-a:text-transit-white max-w-none font-mono text-base md:text-lg tracking-wide">
+                    <div className="prose prose-invert prose-lg md:prose-xl prose-p:leading-relaxed prose-a:text-transit-yellow hover:prose-a:text-transit-white max-w-none font-mono">
                       <Markdown>{aiResponse.text}</Markdown>
                     </div>
 
