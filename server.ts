@@ -8,6 +8,9 @@ import { getDepartures, getAlerts, startBackgroundJobs } from './server/departur
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
+// Trust first proxy (Traefik) so rate limiter sees real client IP via X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security headers via helmet
 app.use(helmet({
   contentSecurityPolicy: {
@@ -52,6 +55,11 @@ app.post('/api/ai/ask', aiLimiter, async (req, res) => {
 
     if (question.length > 500) {
       res.status(400).json({ error: 'Question is too long (max 500 characters)' });
+      return;
+    }
+
+    if (location && (typeof location.lat !== 'number' || typeof location.lng !== 'number' || !isFinite(location.lat) || !isFinite(location.lng))) {
+      res.status(400).json({ error: 'Invalid location' });
       return;
     }
 
