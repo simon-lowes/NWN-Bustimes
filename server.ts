@@ -1,15 +1,44 @@
 import express from 'express';
 import path from 'path';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { askBusQuestion } from './server/aiService.js';
 import { getDepartures, getAlerts, startBackgroundJobs } from './server/departures.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-app.use(express.json());
+// Security headers via helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],  // Tailwind/inline styles
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+}));
+
+// Rate limit the AI endpoint — Gemini calls are expensive and slow
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,   // 1 minute
+  max: 10,               // 10 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a moment and try again.' },
+});
+
+app.use(express.json({ limit: '16kb' }));
 
 // AI endpoint — proxies to Gemini server-side
-app.post('/api/ai/ask', async (req, res) => {
+app.post('/api/ai/ask', aiLimiter, async (req, res) => {
   try {
     const { question, location } = req.body as {
       question?: string;
@@ -18,6 +47,11 @@ app.post('/api/ai/ask', async (req, res) => {
 
     if (!question || typeof question !== 'string' || !question.trim()) {
       res.status(400).json({ error: 'Missing or empty "question" field' });
+      return;
+    }
+
+    if (question.length > 500) {
+      res.status(400).json({ error: 'Question is too long (max 500 characters)' });
       return;
     }
 
@@ -32,6 +66,12 @@ app.post('/api/ai/ask', async (req, res) => {
 // Departures — timetable only (live data used exclusively for alert detection)
 app.get('/api/departures/:atcocode', async (req, res) => {
   try {
+    // ATCO codes are alphanumeric (e.g., 2900H5315)
+    if (!/^[\dA-Za-z]+$/.test(req.params.atcocode)) {
+      res.status(400).json({ error: 'Invalid ATCO code' });
+      return;
+    }
+
     const data = await getDepartures(req.params.atcocode);
     res.json(data);
   } catch (err) {
@@ -46,8 +86,16 @@ app.get('/api/alerts', (_req, res) => {
 });
 
 // Bustimes.org proxy — relays requests to avoid CORS issues in production
+// Restricted to /stops/ and /services/ paths to prevent abuse as an open proxy
 app.get('/api/bustimes/*', async (req, res) => {
   const bustimesPath = req.url.replace(/^\/api\/bustimes\//, '');
+
+  // Validate path: only allow stops/ and services/ endpoints, block traversal
+  if (!/^(?:stops|services)\/[\w/-]+$/.test(bustimesPath)) {
+    res.status(400).json({ error: 'Invalid bustimes path' });
+    return;
+  }
+
   const url = `https://bustimes.org/${bustimesPath}`;
 
   try {

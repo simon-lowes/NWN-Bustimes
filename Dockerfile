@@ -12,5 +12,8 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 COPY server.ts ./
 COPY server/ ./server/
+
+# Run as non-root user for security
+USER node
 EXPOSE 3001
 CMD ["node", "--import=tsx", "server.ts"]
