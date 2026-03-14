@@ -1,36 +1,90 @@
 name: Dependabot Auto-Merge
 
-on:
-  pull_request:
+on: pull_request
 
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 jobs:
-  dependabot:
+  claude-review:
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     steps:
-      - name: Dependabot metadata
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Review and fix dependency update
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "dependabot[bot]"
+          prompt: |
+            You are the dependency maintainer for this project. A dependabot PR has been opened.
+            Your job is to ensure this update is safe, fix any problems it introduces, and approve it — or request changes if it's genuinely dangerous.
+
+            AUTONOMOUS MODE — do NOT ask questions or wait for input. Make all decisions yourself.
+
+            ## Step 1: Identify what changed
+
+            Read package.json and the PR diff. Identify:
+            - Which package(s) were bumped
+            - From what version to what version
+            - Whether this is patch, minor, or major
+
+            ## Step 2: Peer dependency check
+
+            Run: npm ls --all 2>&1 | grep "ERESOLVE\|peer dep\|invalid" || echo "No peer dep issues"
+            If there are peer dependency conflicts, assess whether they are blocking (build fails) or cosmetic (warnings only).
+
+            ## Step 3: Changelog review
+
+            Search the web for the changelog or release notes of the updated package. Summarise:
+            - Security fixes (flag these prominently)
+            - Breaking changes (flag these as blockers for major updates)
+            - Notable new features or deprecations
+            - If you can't find a changelog, note that and check the npm page instead
+
+            ## Step 4: Build verification
+
+            Run: npm run lint
+            Run: npm run build
+            If either fails, investigate and fix if possible. If you can't fix it, request changes.
+
+            ## Step 5: Post your review
+
+            Post a PR review with:
+            - **Package**: name, old version → new version
+            - **Type**: patch/minor/major
+            - **What changed**: 1-2 sentence summary from the changelog
+            - **Security**: any security fixes (or "None noted")
+            - **Concerns**: any issues found and what you did about them (or "None")
+            - **Fixes applied**: list any commits you pushed to this branch (or "None needed")
+
+            If everything is safe: APPROVE the PR.
+            If you found unfixable issues: REQUEST CHANGES with clear explanation.
+
+  auto-merge:
+    runs-on: ubuntu-latest
+    needs: [claude-review]
+    if: always() && github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Auto-approve and merge patch/minor updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+      - name: Auto-merge when CI passes
         run: |
-          gh pr review --approve "$PR_URL"
-          gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Auto-approve major updates (CI is the gatekeeper)
-        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
-        run: |
-          gh pr review --approve "$PR_URL" --body "Major version bump — CI passed, auto-approving. Merging automatically."
+          gh pr review --approve "$PR_URL" --body "CI and Claude review passed. Auto-merging."
           gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
