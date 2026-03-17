@@ -5,6 +5,16 @@ import { useAiAssistant } from './hooks/useAiAssistant';
 import Markdown from 'react-markdown';
 import { motion } from 'motion/react';
 
+function getGreeting(): string {
+  const hour = parseInt(
+    new Date().toLocaleString('en-GB', { timeZone: 'Europe/London', hour: 'numeric', hour12: false }),
+    10,
+  );
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 const PRESETS = [
   "When is the next bus to town?",
   "When is the next bus from King's Lynn bus station to Hunstanton?",
@@ -38,7 +48,7 @@ export default function App() {
           className="text-center pt-6"
         >
           <h1 className="text-4xl md:text-5xl font-display text-brown leading-tight">
-            Good morning!<br/>Here are your bus times.
+            {getGreeting()}!<br/>Here are your bus times.
           </h1>
           <p className="text-2xl text-brown/80 mt-3">Hunstanton and King's Lynn buses</p>
           <button
