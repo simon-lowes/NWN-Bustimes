@@ -80,7 +80,8 @@ app.get('/api/departures/:atcocode', async (req, res) => {
       return;
     }
 
-    const data = await getDepartures(req.params.atcocode);
+    const full = req.query.full === 'true';
+    const data = await getDepartures(req.params.atcocode, { full });
     res.json(data);
   } catch (err) {
     console.error('Departures fetch failed:', err);

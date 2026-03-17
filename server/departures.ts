@@ -178,6 +178,7 @@ async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures | null
  */
 export async function getDepartures(
   atcocode: string,
+  options?: { full?: boolean },
 ): Promise<StopDepartures> {
   const name = STOP_NAMES[atcocode] ?? 'Bus Stop';
   const empty: StopDepartures = { atcocode, name, departures: {} };
@@ -187,7 +188,7 @@ export async function getDepartures(
     ? timetableEntry.data
     : empty;
 
-  return filterPastDepartures(base);
+  return options?.full ? base : filterPastDepartures(base);
 }
 
 /**

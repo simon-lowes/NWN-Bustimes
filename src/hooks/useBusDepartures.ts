@@ -19,12 +19,25 @@ const DESTINATION_STOPS: Record<string, string[]> = {
 export function useBusDepartures(targetDestination: string) {
   const [hunstantonDepartures, setHunstantonDepartures] = useState<BusDeparture[]>([]);
   const [kingsLynnDepartures, setKingsLynnDepartures] = useState<BusDeparture[]>([]);
+  const [hunstantonCurrentIndex, setHunstantonCurrentIndex] = useState(0);
+  const [kingsLynnCurrentIndex, setKingsLynnCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
 
   const controllerRef = useRef<AbortController | null>(null);
+
+  function findCurrentIndex(departures: BusDeparture[]): number {
+    const now = new Date().toLocaleString('en-GB', {
+      timeZone: 'Europe/London',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const idx = departures.findIndex((d) => d.best_departure_estimate >= now);
+    return idx >= 0 ? idx : departures.length - 1;
+  }
 
   const fetchBuses = useCallback(async () => {
     // Abort any in-flight request
@@ -38,7 +51,7 @@ export function useBusDepartures(targetDestination: string) {
       // Hunstanton: fetch both departure stands in parallel, filter for King's Lynn bound
       const hunstantonResults = await Promise.all(
         HUNSTANTON_STANDS.map((code) =>
-          getLiveDepartures(code, controller.signal).catch(() => null)
+          getLiveDepartures(code, controller.signal, { full: true }).catch(() => null)
         )
       );
       const hunstantonBuses: BusDeparture[] = [];
@@ -55,13 +68,14 @@ export function useBusDepartures(targetDestination: string) {
       }
       hunstantonBuses.sort((a, b) => a.aimed_departure_time.localeCompare(b.aimed_departure_time));
       setHunstantonDepartures(hunstantonBuses);
+      setHunstantonCurrentIndex(findCurrentIndex(hunstantonBuses));
 
       // King's Lynn: fetch relevant stands in parallel, merge results.
       // No direction filter needed — stand selection determines the destination.
       const stands = DESTINATION_STOPS[targetDestination] ?? [];
       const standResults = await Promise.all(
         stands.map((code) =>
-          getLiveDepartures(code, controller.signal).catch(() => null)
+          getLiveDepartures(code, controller.signal, { full: true }).catch(() => null)
         )
       );
 
@@ -75,11 +89,12 @@ export function useBusDepartures(targetDestination: string) {
       }
       allKLBuses.sort((a, b) => a.aimed_departure_time.localeCompare(b.aimed_departure_time));
       setKingsLynnDepartures(allKLBuses);
+      setKingsLynnCurrentIndex(findCurrentIndex(allKLBuses));
 
-      setLastSync(`${new Date().toLocaleTimeString('en-GB', { hour12: true })} [TIMETABLE]`);
+      setLastSync(new Date().toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }));
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setError('ERR_FETCH_FAIL');
+      setError('Could not load bus times. Please try again.');
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -111,5 +126,5 @@ export function useBusDepartures(targetDestination: string) {
     void fetchAlerts();
   }, [fetchBuses, fetchAlerts]);
 
-  return { hunstantonDepartures, kingsLynnDepartures, isLoading, error, lastSync, alerts, refresh };
+  return { hunstantonDepartures, kingsLynnDepartures, hunstantonCurrentIndex, kingsLynnCurrentIndex, isLoading, error, lastSync, alerts, refresh };
 }

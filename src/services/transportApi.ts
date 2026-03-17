@@ -25,8 +25,10 @@ export interface Alert {
 export async function getLiveDepartures(
   atcocode: string,
   signal?: AbortSignal,
+  options?: { full?: boolean },
 ): Promise<StopDepartures> {
-  const res = await fetch(`/api/departures/${atcocode}`, { signal });
+  const params = options?.full ? '?full=true' : '';
+  const res = await fetch(`/api/departures/${atcocode}${params}`, { signal });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };

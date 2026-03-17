@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BusDeparture } from '../services/transportApi';
 import { formatTime12h } from '../utils/time';
 import { motion } from 'motion/react';
@@ -6,84 +7,112 @@ interface BusCardProps {
   title: string;
   subtitle: string;
   departures: BusDeparture[];
+  currentIndex: number;
   isLoading: boolean;
   error: string | null;
   delay?: number;
 }
 
-export function BusCard({ title, subtitle, departures, isLoading, error, delay = 0 }: BusCardProps) {
-  const today = new Date().toISOString().split('T')[0] ?? '';
-  const nextBus = departures[0];
+export function BusCard({ title, subtitle, departures, currentIndex, isLoading, error, delay = 0 }: BusCardProps) {
+  const [selectedIndex, setSelectedIndex] = useState(currentIndex);
+
+  // Reset to current when data refreshes
+  useEffect(() => {
+    setSelectedIndex(currentIndex);
+  }, [currentIndex, departures]);
+
+  const selectedBus = departures[selectedIndex];
   const lastBus = departures.length > 1 ? departures[departures.length - 1] : undefined;
+  const today = new Date().toISOString().split('T')[0] ?? '';
+
+  const canGoBack = selectedIndex > 0;
+  const canGoForward = selectedIndex < departures.length - 1;
+
+  // Label changes based on position
+  let timeLabel: string;
+  if (selectedIndex === currentIndex) {
+    timeLabel = 'Your next bus leaves at';
+  } else if (selectedIndex < currentIndex) {
+    timeLabel = 'Earlier bus was at';
+  } else {
+    timeLabel = 'A later bus leaves at';
+  }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
-      className="bg-transit-black brutal-border p-6 md:p-8 relative overflow-hidden group"
+      className="card"
     >
-      {/* Background Accent Text */}
-      <div className="absolute -right-10 -top-10 text-[150px] md:text-[200px] font-display opacity-5 text-transit-white group-hover:text-transit-yellow transition-colors duration-700 pointer-events-none select-none leading-none">
-        {title.substring(0, 3).toUpperCase()}
-      </div>
+      <h2 className="text-3xl font-display text-brown mb-1">Your bus from {title}</h2>
+      <p className="text-xl text-brown/80 mb-6">This bus takes you to {subtitle}.</p>
 
-      <div className="mb-8 border-b-4 border-transit-white pb-4 relative z-10">
-        <h2 className="text-5xl md:text-6xl font-display uppercase tracking-wide text-transit-white leading-none">{title}</h2>
-        <p className="font-mono text-transit-yellow text-sm md:text-base uppercase mt-3 tracking-widest">DEST // {subtitle}</p>
-      </div>
-
-      <div className="relative z-10">
+      <div>
         {isLoading ? (
-          <div className="led-text animate-pulse text-2xl md:text-3xl py-8" role="status" aria-live="polite">LOADING_DATA...</div>
+          <div className="text-amber font-medium text-xl animate-pulse py-8" role="status" aria-live="polite">
+            <span className="inline-block animate-spin mr-3">☀️</span> Checking bus times...
+          </div>
         ) : error ? (
-          <div className="led-text-orange text-xl md:text-2xl py-8" role="alert">ERR: {error}</div>
+          <div className="text-coral font-medium text-xl py-8" role="alert">{error}</div>
         ) : departures.length === 0 ? (
-          <div className="led-text text-xl md:text-2xl opacity-50 py-8">NO_SERVICE_AVAILABLE</div>
+          <div className="text-brown/50 text-xl py-8">No buses running right now.</div>
         ) : (
-          <div className="space-y-8">
-            {/* Next Bus */}
-            {nextBus && (
-              <div className="relative">
-                <div className="text-xs md:text-sm font-mono text-transit-white/50 mb-2 tracking-widest flex items-center">
-                  NEXT_DEPARTURE
-                  {nextBus.date > today && (
-                    <span className="ml-3 bg-transit-yellow text-transit-black px-2 py-0.5 text-[10px] font-bold tracking-widest animate-pulse">TOMORROW</span>
+          <div>
+            {selectedBus && (
+              <div>
+                <p className="text-xl text-brown/80 mb-2 flex items-center gap-2">
+                  {timeLabel}
+                  {selectedBus.date > today && (
+                    <span className="bg-amber text-brown text-sm font-semibold px-3 py-1 rounded-full">Tomorrow</span>
                   )}
-                </div>
-                <div className="flex justify-between items-end gap-4">
-                  <div className="text-6xl md:text-8xl font-display leading-none text-transit-yellow tracking-tighter">
-                    {formatTime12h(nextBus.best_departure_estimate)}
-                  </div>
-                  <div className="text-right pb-1 md:pb-2">
-                    <div className="font-mono text-transit-black font-bold text-xl md:text-3xl bg-transit-yellow px-3 py-1 inline-block">
-                      {nextBus.line}
+                </p>
+
+                {/* Time display with arrow navigation */}
+                <div className="flex items-center gap-4 my-2">
+                  <button
+                    onClick={() => setSelectedIndex((i) => i - 1)}
+                    disabled={!canGoBack}
+                    aria-label="Earlier departure"
+                    className="w-14 h-14 flex items-center justify-center rounded-full bg-cream border-2 border-peach text-brown text-2xl font-bold active:bg-peach transition-colors disabled:opacity-30 disabled:cursor-default shrink-0"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                  </button>
+
+                  <div className="flex-1 text-center">
+                    <div className="text-6xl font-bold text-amber leading-tight font-body">
+                      {formatTime12h(selectedBus.best_departure_estimate)}
+                    </div>
+                    <div className="inline-block mt-3 bg-cream text-brown text-2xl font-semibold px-5 py-3 rounded-2xl border-2 border-peach">
+                      Bus number {selectedBus.line}
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => setSelectedIndex((i) => i + 1)}
+                    disabled={!canGoForward}
+                    aria-label="Later departure"
+                    className="w-14 h-14 flex items-center justify-center rounded-full bg-cream border-2 border-peach text-brown text-2xl font-bold active:bg-peach transition-colors disabled:opacity-30 disabled:cursor-default shrink-0"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                  </button>
                 </div>
+
+                {/* Position indicator */}
+                <p className="text-center text-sm text-brown/50 mt-2">
+                  {selectedIndex + 1} of {departures.length} buses today
+                </p>
               </div>
             )}
 
-            {/* Last Bus */}
-            {lastBus && (
-              <div className="relative border-t-2 border-dashed border-transit-white/20 pt-8">
-                <div className="text-xs md:text-sm font-mono text-transit-orange mb-2 flex items-center gap-2 tracking-widest">
-                  <span className="w-2 h-2 bg-transit-orange rounded-full animate-pulse"></span>
-                  FINAL_SERVICE
+            {lastBus && lastBus !== selectedBus && (
+              <div className="last-bus-callout">
+                <p className="text-xl font-medium text-brown m-0 flex items-center gap-2">
+                  The last bus today leaves at {formatTime12h(lastBus.best_departure_estimate)} — Bus {lastBus.line}
                   {lastBus.date > today && (
-                    <span className="ml-3 bg-transit-orange text-transit-black px-2 py-0.5 text-[10px] font-bold tracking-widest">TOMORROW</span>
+                    <span className="bg-coral text-white text-sm font-semibold px-3 py-1 rounded-full">Tomorrow</span>
                   )}
-                </div>
-                <div className="flex justify-between items-end gap-4">
-                  <div className="text-5xl md:text-7xl font-display leading-none text-transit-orange tracking-tighter">
-                    {formatTime12h(lastBus.best_departure_estimate)}
-                  </div>
-                  <div className="text-right pb-1 md:pb-2">
-                    <div className="font-mono text-transit-black font-bold text-lg md:text-2xl bg-transit-orange px-3 py-1 inline-block">
-                      {lastBus.line}
-                    </div>
-                  </div>
-                </div>
+                </p>
               </div>
             )}
           </div>
