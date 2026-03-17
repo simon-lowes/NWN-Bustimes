@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
-import { askBusQuestion, AiResponse } from '../services/aiService';
+import { askBusQuestion, AiResponse, ChatMessage } from '../services/aiService';
 
 export function useAiAssistant() {
   const [query, setQuery] = useState('');
   const [aiResponse, setAiResponse] = useState<AiResponse | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
 
   const handleAskQuestion = async (questionToAsk: string, requiresLocation = false) => {
@@ -39,11 +40,16 @@ export function useAiAssistant() {
         }
       }
 
-      const response = await askBusQuestion(questionToAsk, location, controller.signal);
+      const response = await askBusQuestion(questionToAsk, history, location, controller.signal);
       setAiResponse(response);
+      setHistory((prev) => [
+        ...prev,
+        { role: 'user', text: questionToAsk },
+        { role: 'model', text: response.text },
+      ]);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setAiError('CONNECTION_TIMEOUT');
+      setAiError('Sorry, something went wrong. Please try again.');
     } finally {
       setIsAiLoading(false);
     }
@@ -55,6 +61,7 @@ export function useAiAssistant() {
     setAiResponse(null);
     setAiError(null);
     setIsAiLoading(false);
+    setHistory([]);
   };
 
   return { query, setQuery, aiResponse, isAiLoading, aiError, handleAskQuestion, clearResponse };

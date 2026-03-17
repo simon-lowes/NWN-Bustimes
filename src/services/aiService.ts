@@ -3,15 +3,21 @@ export interface AiResponse {
   links: Array<{ title: string; uri: string }>;
 }
 
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
 export async function askBusQuestion(
   question: string,
+  history?: ChatMessage[],
   location?: { lat: number; lng: number },
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ): Promise<AiResponse> {
   const res = await fetch('/api/ai/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, location }),
+    body: JSON.stringify({ question, history, location }),
     signal,
   });
 

@@ -66,6 +66,7 @@ async function getUkTime(): Promise<string> {
 
 export async function askBusQuestion(
   question: string,
+  history?: Array<{ role: 'user' | 'model'; text: string }>,
   location?: { lat: number; lng: number }
 ): Promise<AiResponse> {
   const [timeString, departureSummary] = await Promise.all([
@@ -73,20 +74,29 @@ export async function askBusQuestion(
     getDepartureSummary(),
   ]);
 
-  const prompt = `
+  const systemInstruction = `You are a helpful local transit assistant strictly for the North West Norfolk constituency. You are provided with VERIFIED LIVE DEPARTURE DATA from official timetables — this is ground truth and must NEVER be contradicted. If the departure data shows buses running, then buses ARE running. Base your answers on this data first. Use Google Maps and Search only for supplementary information like route maps or walking directions. Always format times in 12-hour AM/PM format. Be concise, friendly, and highlight the most important times (like the last bus). If a user asks about routes outside North West Norfolk, politely remind them that you only cover the North West Norfolk constituency.
+
 Current Date and Time (UK): ${timeString}
 Location Context: North West Norfolk constituency (Hunstanton, King's Lynn, Fairstead Estate, Heacham, Snettisham, Dersingham, etc.).
 ${location ? `User Location: Latitude ${location.lat}, Longitude ${location.lng}` : 'User location unavailable. Assume they are in North West Norfolk.'}
 
 VERIFIED LIVE DEPARTURE DATA (from official timetables — this is ground truth, do NOT contradict it):
-${departureSummary}
+${departureSummary}`;
 
-User Question: ${question}
-`;
+  // Build multi-turn contents array from history
+  const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+  if (history) {
+    for (const msg of history) {
+      contents.push({ role: msg.role, parts: [{ text: msg.text }] });
+    }
+  }
+
+  // Add the current question
+  contents.push({ role: 'user', parts: [{ text: question }] });
 
   const config: GenerateContentConfig = {
-    systemInstruction:
-      "You are a helpful local transit assistant strictly for the North West Norfolk constituency. You are provided with VERIFIED LIVE DEPARTURE DATA from official timetables — this is ground truth and must NEVER be contradicted. If the departure data shows buses running, then buses ARE running. Base your answers on this data first. Use Google Maps and Search only for supplementary information like route maps or walking directions. Always format times in 12-hour AM/PM format. Be concise, friendly, and highlight the most important times (like the last bus). If a user asks about routes outside North West Norfolk, politely remind them that you only cover the North West Norfolk constituency.",
+    systemInstruction,
     tools: [{ googleMaps: {} }, { googleSearch: {} }],
   };
 
@@ -103,7 +113,7 @@ User Question: ${question}
 
   const response = await getAi().models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: prompt,
+    contents,
     config,
   });
 

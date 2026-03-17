@@ -43,8 +43,9 @@ app.use(express.json({ limit: '16kb' }));
 // AI endpoint — proxies to Gemini server-side
 app.post('/api/ai/ask', aiLimiter, async (req, res) => {
   try {
-    const { question, location } = req.body as {
+    const { question, history, location } = req.body as {
       question?: string;
+      history?: Array<{ role: 'user' | 'model'; text: string }>;
       location?: { lat: number; lng: number };
     };
 
@@ -63,7 +64,7 @@ app.post('/api/ai/ask', aiLimiter, async (req, res) => {
       return;
     }
 
-    const response = await askBusQuestion(question, location);
+    const response = await askBusQuestion(question, history, location);
     res.json(response);
   } catch (err) {
     console.error('AI request failed:', err);

@@ -195,6 +195,17 @@ export default function App() {
             )}
           </div>
 
+          {/* Start again button — shows after AI responds */}
+          {(aiResponse || aiError) && !isAiLoading && (
+            <button
+              onClick={clearResponse}
+              className="w-full mt-4 bg-cream text-brown border-2 border-peach rounded-2xl px-6 py-4 text-xl font-medium active:bg-peach active:border-amber transition-colors flex items-center justify-center gap-3"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+              Start again
+            </button>
+          )}
+
           {/* Input form */}
           <form
             onSubmit={(e) => { e.preventDefault(); handleAskQuestion(query); }}
