@@ -28,7 +28,11 @@ export async function getLiveDepartures(
   options?: { full?: boolean },
 ): Promise<StopDepartures> {
   const params = options?.full ? '?full=true' : '';
-  const res = await fetch(`/api/departures/${atcocode}${params}`, { signal });
+  const timeout = AbortSignal.timeout(15_000);
+  const combined = signal
+    ? AbortSignal.any([signal, timeout])
+    : timeout;
+  const res = await fetch(`/api/departures/${atcocode}${params}`, { signal: combined });
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' })) as { error?: string };

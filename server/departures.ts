@@ -184,9 +184,9 @@ export async function getDepartures(
   const empty: StopDepartures = { atcocode, name, departures: {} };
 
   const timetableEntry = timetableCache.get(atcocode);
-  const base: StopDepartures = (timetableEntry && timetableEntry.expires > Date.now())
-    ? timetableEntry.data
-    : empty;
+  // Serve stale data rather than empty — expired timetable data is better than no data.
+  // Cache refresh will replace it when it succeeds.
+  const base: StopDepartures = timetableEntry ? timetableEntry.data : empty;
 
   return options?.full ? base : filterPastDepartures(base);
 }
@@ -276,18 +276,16 @@ function getUKMinute(): number {
 export async function startBackgroundJobs(): Promise<void> {
   await refreshTimetableCache();
 
+  // Refresh when any cache entry has expired, checked every 60s
   setInterval(() => {
-    const hour = getUKHour();
-    const minute = getUKMinute();
-
-    if ([6, 10, 14, 18].includes(hour) && minute === 0) {
+    const now = Date.now();
+    const anyExpired = ALL_ATCO_CODES.some((code) => {
+      const entry = timetableCache.get(code);
+      return !entry || entry.expires <= now;
+    });
+    if (anyExpired) {
       void refreshTimetableCache();
     }
-
-    // DISABLED: Live alert detection
-    // if ((hour === 7 || hour === 13) && minute === 30) {
-    //   void checkForAlerts();
-    // }
   }, 60_000);
 
   console.log('[background] Timetable-only background jobs started');

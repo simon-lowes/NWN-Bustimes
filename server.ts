@@ -40,6 +40,12 @@ const aiLimiter = rateLimit({
 
 app.use(express.json({ limit: '16kb' }));
 
+// Prevent Cloudflare and browsers from caching API responses
+app.use('/api', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
 // AI endpoint — proxies to Gemini server-side
 app.post('/api/ai/ask', aiLimiter, async (req, res) => {
   try {
@@ -111,6 +117,7 @@ app.get('/api/bustimes/*', async (req, res) => {
   try {
     const upstream = await fetch(url, {
       headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
     });
 
     res.status(upstream.status);

@@ -51,13 +51,16 @@ export function useBusDepartures(targetDestination: string) {
       // Hunstanton: fetch both departure stands in parallel, filter for King's Lynn bound
       const hunstantonResults = await Promise.all(
         HUNSTANTON_STANDS.map((code) =>
-          getLiveDepartures(code, controller.signal, { full: true }).catch(() => null)
+          getLiveDepartures(code, controller.signal, { full: true })
+            .then((data) => ({ ok: true as const, data }))
+            .catch((err) => ({ ok: false as const, err }))
         )
       );
+      const hunstantonSuccesses = hunstantonResults.filter((r) => r.ok);
       const hunstantonBuses: BusDeparture[] = [];
       for (const result of hunstantonResults) {
-        if (result) {
-          for (const lineBuses of Object.values(result.departures)) {
+        if (result.ok) {
+          for (const lineBuses of Object.values(result.data.departures)) {
             for (const dep of lineBuses) {
               if (dep.direction.toLowerCase().includes('lynn') || dep.direction.toLowerCase().includes('king')) {
                 hunstantonBuses.push(dep);
@@ -75,14 +78,17 @@ export function useBusDepartures(targetDestination: string) {
       const stands = DESTINATION_STOPS[targetDestination] ?? [];
       const standResults = await Promise.all(
         stands.map((code) =>
-          getLiveDepartures(code, controller.signal, { full: true }).catch(() => null)
+          getLiveDepartures(code, controller.signal, { full: true })
+            .then((data) => ({ ok: true as const, data }))
+            .catch((err) => ({ ok: false as const, err }))
         )
       );
 
+      const klSuccesses = standResults.filter((r) => r.ok);
       const allKLBuses: BusDeparture[] = [];
       for (const result of standResults) {
-        if (result) {
-          for (const lineBuses of Object.values(result.departures)) {
+        if (result.ok) {
+          for (const lineBuses of Object.values(result.data.departures)) {
             allKLBuses.push(...lineBuses);
           }
         }
@@ -91,7 +97,12 @@ export function useBusDepartures(targetDestination: string) {
       setKingsLynnDepartures(allKLBuses);
       setKingsLynnCurrentIndex(findCurrentIndex(allKLBuses));
 
-      setLastSync(new Date().toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }));
+      // If ALL fetches failed, show error instead of misleading "no buses"
+      if (hunstantonSuccesses.length === 0 && klSuccesses.length === 0) {
+        setError('Could not load bus times. Check your connection and try again.');
+      } else {
+        setLastSync(new Date().toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }));
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setError('Could not load bus times. Please try again.');

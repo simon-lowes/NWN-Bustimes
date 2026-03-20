@@ -14,11 +14,17 @@ export async function askBusQuestion(
   location?: { lat: number; lng: number },
   signal?: AbortSignal,
 ): Promise<AiResponse> {
+  // Combine caller's abort signal with a 45s timeout (allows 30s Gemini + network overhead)
+  const timeout = AbortSignal.timeout(45_000);
+  const combined = signal
+    ? AbortSignal.any([signal, timeout])
+    : timeout;
+
   const res = await fetch('/api/ai/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, history, location }),
-    signal,
+    signal: combined,
   });
 
   if (!res.ok) {
