@@ -8,54 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- FINAL_SERVICE showing wrong last bus (e.g. 17:50 instead of 22:05) because `getDepartures(live=true)` returned only nextbuses.mobi data (~5-10 upcoming departures), discarding the full-day timetable
-- NEXT_DEPARTURE could show past departure times (e.g. 06:40 in the afternoon)
-
-### Changed
-
-- `getDepartures()` now uses timetable as the base dataset; live data overlays real-time delay info onto timetable entries instead of replacing them
-- Past departures are filtered server-side (UK timezone) before returning — `departures[0]` is always the next upcoming bus
-- New `mergeDepartures()` matches live data to timetable entries by line + aimed time within 10 minutes, with midnight-wrap safety
+- **Network errors displayed as "no buses" instead of error message** — `.catch(() => null)` on departure fetches silently swallowed network failures, showing "No buses running right now" on bad wifi instead of an error. Now tracks fetch successes and shows connection error when all fetches fail.
+- **Gemini claiming "live data" / "real-time data"** — system prompt said "VERIFIED LIVE DEPARTURE DATA" which Gemini parroted. Reworded to "SCHEDULED TIMETABLE DATA".
+- **Non-deterministic AI answers** — no temperature was set (defaulted to 1.0). Set to 0.2 for consistent factual responses.
+- **"No more buses today" at 5pm** — cache TTL expiry returned empty data instead of stale. Now serves expired cache entries until a successful refresh replaces them.
+- **Gemini confused by user corrections** — "ground truth, must never be contradicted" instruction conflicted with user saying "that's wrong". New prompt acknowledges data may not have loaded and suggests refreshing.
+- **Google Search injecting contradictory transit data** — disabled Google Search tool (kept Maps for walking directions only).
 
 ### Added
 
-- Three-layer smart caching strategy replacing continuous 60s polling
-  - **Timetable cache:** bustimes.org background refresh every 4 hours (6/10/14/18 UK time) + on server startup
-  - **Live cache:** nextbuses.mobi on-demand with 5-minute TTL, triggered by user interaction only
-  - **Alert system:** compares live vs timetable data at 7:30/13:30 UK time to detect potential cancellations
-- `GET /api/alerts` endpoint returning detected service disruptions
-- `?live=true` query parameter on `GET /api/departures/:atcocode` for on-demand real-time data
-- 10-second cooldown between nextbuses.mobi requests (respects `Crawl-delay: 10` in robots.txt)
-- REFRESH button in header for manual live data fetch
-- Orange alert banner above departure boards when cancellations detected
-- LAST_SYNC label shows data source (`[LIVE]` or `[TIMETABLE]`)
-
-### Changed
-
-- Upstream request volume reduced from ~8,640–11,520/day to ~36–76/day (99.5% reduction)
-- Client no longer polls on a timer — fetches on mount, destination change, and manual refresh only
-- Server background jobs handle timetable population and alert checks independently of client requests
-
-### Previous (pre-caching)
-
-- Server-side departure scraper (`server/departures.ts`) fetching both nextbuses.mobi and bustimes.org in parallel
-- `GET /api/departures/:atcocode` endpoint with 60-second in-memory cache
-- Multi-stand fetching for both stations — Hunstanton uses Stand A + B, King's Lynn maps destinations to correct stand(s)
-- bustimes.org parser uses "Expected" column for real-time times when available
-- `cheerio` dependency for HTML parsing
-- Client transport API (`transportApi.ts`) is now a thin fetch wrapper — all scraping logic is server-side
-- Both data sources fetched concurrently (not sequential fallback) — nextbuses preferred for real-time, bustimes fills gaps
-- ATCO codes verified: Hunstanton Stand A `2900H5315` + Stand B `2900H5314` (Bay 1 is arrivals-only), King's Lynn stands C/E/G/H
-- Departure filtering uses stand-to-destination mapping instead of direction keyword matching
+- Timeouts across the full request chain: Gemini API 30s, AI client fetch 45s, departures client fetch 15s, bustimes.org proxy 10s
+- `Cache-Control: no-store` on all `/api/*` responses to prevent Cloudflare caching error responses
+- Cache refresh now triggers on expiry detection (checked every 60s) instead of fixed hours (6/10/14/18)
+- System prompt rules: never say "no more buses" without citing the last departed bus; handle empty data as "may not have loaded"
 
 ### Removed
 
-- 60-second client-side polling interval
-- All mock departure data (`getMockDepartures`, `makeDeparture`, hardcoded timetables)
-- `getTimetable()` function and `TimetableResponse` interface (no longer needed)
-- `BustimesApiDeparture` interface and bustimes.org JSON parsing (replaced by HTML scraping)
-- "Tomorrow" re-fetch logic (scraping sources only return upcoming departures)
-- `isMock` flag from `StopDepartures` interface
+- Google Search tool from Gemini config (was a source of hallucinated "live" transit data)
 
 ## [0.1.0] - 2026-03-04
 
