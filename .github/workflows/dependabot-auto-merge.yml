@@ -82,9 +82,10 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Auto-merge when CI passes
+      - name: Auto-merge patch and minor updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: |
-          gh pr review --approve "$PR_URL" --body "CI and Claude review passed. Auto-merging."
+          gh pr review --approve "$PR_URL" --body "CI and Claude review passed. Auto-merging (non-major update)."
           gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
