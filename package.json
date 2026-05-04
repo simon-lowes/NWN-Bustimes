@@ -14,7 +14,7 @@
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json"
   },
   "dependencies": {
-    "@google/genai": "^1.50.1",
+    "@google/genai": "^1.51.0",
     "cheerio": "^1.2.0",
     "express": "^4.21.2",
     "express-rate-limit": "^8.3.2",
