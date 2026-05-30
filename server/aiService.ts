@@ -105,6 +105,12 @@ ${departureSummary}`;
   // Add the current question
   contents.push({ role: 'user', parts: [{ text: question }] });
 
+  // Bound retained conversation memory: keep only the most recent 20 entries
+  // (10 exchanges) so a client-supplied history cannot grow without limit.
+  if (contents.length > 20) {
+    contents.splice(0, contents.length - 20);
+  }
+
   const config: GenerateContentConfig = {
     systemInstruction,
     tools: [{ googleMaps: {} }],
