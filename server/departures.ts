@@ -66,6 +66,20 @@ function getUKTimeNow(): string {
   });
 }
 
+/**
+ * Convert an "HH:MM" or "H:MM" string to minutes since midnight.
+ * Returns null when the string is not a valid time so callers can decide
+ * how to treat unparseable values (never compared lexicographically).
+ */
+function timeToMinutes(time: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
 function todayStr(): string {
   // Use UK timezone, not UTC — avoids off-by-one during BST (midnight-1am)
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).formatToParts(new Date());
@@ -92,17 +106,27 @@ function groupByLine(departures: BusDeparture[]): Record<string, BusDeparture[]>
 
 /**
  * Remove departures whose best_departure_estimate is in the past (UK time).
- * Departures dated tomorrow are kept regardless.
+ * Departures dated a future day (e.g. tomorrow) are kept regardless. Departures
+ * dated a past day — e.g. yesterday's data still cached across midnight — are
+ * always discarded so already-departed buses are never shown as upcoming.
  */
 function filterPastDepartures(stop: StopDepartures): StopDepartures {
-  const now = getUKTimeNow();
   const today = todayStr();
+  const nowMinutes = timeToMinutes(getUKTimeNow());
   const filtered: Record<string, BusDeparture[]> = {};
 
   for (const [line, deps] of Object.entries(stop.departures)) {
-    const kept = deps.filter(
-      (dep) => dep.date !== today || dep.best_departure_estimate >= now
-    );
+    const kept = deps.filter((dep) => {
+      // Future days (tomorrow onward) are always upcoming.
+      if (dep.date > today) return true;
+      // Past days (e.g. stale cache from yesterday) have all departed.
+      if (dep.date < today) return false;
+      // Same day: compare by minutes-since-midnight, never lexicographically,
+      // since scraped times may use a single-digit hour ("9:05").
+      const depMinutes = timeToMinutes(dep.best_departure_estimate);
+      if (depMinutes === null || nowMinutes === null) return true;
+      return depMinutes >= nowMinutes;
+    });
     if (kept.length > 0) {
       filtered[line] = kept;
     }

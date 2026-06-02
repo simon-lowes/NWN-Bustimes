@@ -23,7 +23,9 @@ export function BusCard({ title, subtitle, departures, currentIndex, isLoading, 
 
   const selectedBus = departures[selectedIndex];
   const lastBus = departures.length > 1 ? departures[departures.length - 1] : undefined;
-  const today = new Date().toISOString().split('T')[0] ?? '';
+  // Use the UK (Europe/London) calendar date to match the server's date stamps.
+  // Using UTC here is off-by-one during the BST 00:00–01:00 window.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
 
   const canGoBack = selectedIndex > 0;
   const canGoForward = selectedIndex < departures.length - 1;
