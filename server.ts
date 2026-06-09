@@ -70,7 +70,21 @@ app.post('/api/ai/ask', aiLimiter, async (req, res) => {
       return;
     }
 
-    const response = await askBusQuestion(question, history, location);
+    // Validate client-supplied history at the boundary: only keep well-formed
+    // turns. A non-array, bad roles, or non-string/oversized text are dropped
+    // so forged or malformed entries never reach the model.
+    const safeHistory = Array.isArray(history)
+      ? history.filter(
+          (msg): msg is { role: 'user' | 'model'; text: string } =>
+            !!msg &&
+            typeof msg === 'object' &&
+            (msg.role === 'user' || msg.role === 'model') &&
+            typeof msg.text === 'string' &&
+            msg.text.length <= 500
+        )
+      : undefined;
+
+    const response = await askBusQuestion(question, safeHistory, location);
     res.json(response);
   } catch (err) {
     console.error('AI request failed:', err);

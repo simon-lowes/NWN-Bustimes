@@ -39,8 +39,15 @@ async function getUkTime(): Promise<string> {
     const res = await fetch('https://worldtimeapi.org/api/timezone/Europe/London', {
       signal: AbortSignal.timeout(3000),
     });
-    const data = await res.json() as { datetime: string };
+    if (!res.ok) throw new Error(`worldtimeapi returned ${res.status}`);
+    const data = await res.json() as { datetime?: unknown };
+    if (typeof data.datetime !== 'string' || data.datetime.length === 0) {
+      throw new Error('worldtimeapi response missing datetime');
+    }
     const dt = new Date(data.datetime);
+    if (isNaN(dt.getTime())) {
+      throw new Error('worldtimeapi returned an invalid datetime');
+    }
     return dt.toLocaleString('en-GB', {
       timeZone: 'Europe/London',
       weekday: 'long',
