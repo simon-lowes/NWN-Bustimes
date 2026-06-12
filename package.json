@@ -25,6 +25,9 @@
     "react-markdown": "^10.1.0",
     "tsx": "^4.22.4"
   },
+  "overrides": {
+    "shell-quote": "1.8.4"
+  },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.3.0",
