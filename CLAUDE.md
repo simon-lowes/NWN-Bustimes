@@ -93,3 +93,8 @@ Built for an elderly relative (83) — clarity and correctness are paramount.
 - Every fetch in the chain needs a timeout: Gemini API, client AI fetch, client departures fetch, proxy upstream
 - API responses need `Cache-Control: no-store` or Cloudflare may cache error responses
 - Fixed-hour refresh schedule (6/10/14/18) had gaps — expiry-based refresh is more robust
+
+## CI and Dependabot
+- `smoke-test.yml` runs lint (tsc) and build on every PR.
+- `dependabot-auto-merge.yml` approves and enables auto-merge for non-major Dependabot bumps. `gh pr merge --auto` needs branch protection on `main` with `smoke` as a required check; without it the step fails with "Protected branch rules not configured" and nothing merges.
+- A Claude-based `claude-review` job used to run in that workflow. It was removed in September 2026 after failing on every PR since July (expired `CLAUDE_CODE_OAUTH_TOKEN`, plus upstream bugs) with nothing depending on it. The `CLAUDE_CODE_OAUTH_TOKEN` secret can be deleted. To bring it back, see https://code.claude.com/docs/en/github-actions.
