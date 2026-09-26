@@ -49,7 +49,7 @@ Built for an elderly relative (83) — clarity and correctness are paramount.
 - **Build type:** Dockerfile (not Nixpacks)
 - **Docker service name:** `nwnbustimes-1etasu`
 - **Container port:** 3001
-- **No auto-deploy** — Dokploy webhooks not configured. Manual deploy:
+- **Auto-deploy:** Dokploy redeploys on every push to `main` (verified 26 Sept 2026: a merge went live with no manual step). Manual fallback if a deploy does not appear in the Dokploy Deployments tab:
   ```
   ssh simon@76.13.255.213 "cd /tmp && git clone https://github.com/simon-lowes/NWN-Bustimes.git && cd NWN-Bustimes && sudo docker build -t nwnbustimes-1etasu:latest . 2>&1 | tail -5 && sudo docker service update --force --image nwnbustimes-1etasu:latest nwnbustimes-1etasu 2>&1 | tail -3 && cd /tmp && rm -rf NWN-Bustimes"
   ```
@@ -58,6 +58,7 @@ Built for an elderly relative (83) — clarity and correctness are paramount.
   - `PORT=3001`
 - **DNS:** Cloudflare A record → 76.13.255.213, orange cloud proxied
 - **SSL:** Traefik handles origin cert, Cloudflare handles edge
+- **Docker Swarm autolock is off** (disabled 26 Sept 2026). It was on before, and a kernel-update reboot left every Dokploy service at 0/1 and all sites down until `sudo docker swarm unlock` was run by hand. If a reboot ever leaves `sudo docker service ls` showing 0/1 everywhere, check for that error first.
 
 ## Key Decisions
 - **Timetable-only** — live data sources (nextbuses.mobi) were corrupting timetable data and causing incorrect AI responses. Removed entirely until a reliable confirmation method is found.
@@ -72,7 +73,6 @@ Built for an elderly relative (83) — clarity and correctness are paramount.
 - Gemini responses can be slow (30s timeout set; Cloudflare 100s proxy timeout as outer bound)
 - Dokploy UI wouldn't accept environment variables — had to inject via `sudo docker service update --env-add`
 - bustimes.org sometimes returns duplicate rows — deduplication applied at scrape time
-- No auto-deploy: must SSH to VPS and manually build/deploy (see Deployment section)
 - Server blocks startup for 12-20s while populating timetable cache — container restarts cause brief 502s
 
 ## Critical Lessons
