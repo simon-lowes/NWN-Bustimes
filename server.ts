@@ -11,6 +11,14 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 // Trust first proxy (Traefik) so rate limiter sees real client IP via X-Forwarded-For
 app.set('trust proxy', 1);
 
+// Limit non-API SPA fallback hits that trigger filesystem access
+const spaFallbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // cap repeated wildcard page fetches per client
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Security headers via helmet
 app.use(helmet({
   contentSecurityPolicy: {
@@ -168,7 +176,7 @@ const distPath = path.resolve(import.meta.dirname, 'dist');
 app.use(express.static(distPath));
 
 // SPA fallback — serve index.html for any non-API route
-app.get('*', (_req, res) => {
+app.get('*', spaFallbackLimiter, (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
