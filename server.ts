@@ -38,6 +38,19 @@ const aiLimiter = rateLimit({
   message: { error: 'Too many requests. Please wait a moment and try again.' },
 });
 
+// General limiter for everything else: timetable API, bustimes.org proxy,
+// static files and the SPA fallback (which reads from disk). A page load is
+// roughly 20 requests, so 300/min per IP is generous for real users while
+// stopping a single client from hammering the proxy or the file-system route.
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,   // 1 minute
+  max: 300,              // 300 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait a moment and try again.' },
+});
+app.use(generalLimiter);
+
 app.use(express.json({ limit: '16kb' }));
 
 // Prevent Cloudflare and browsers from caching API responses
