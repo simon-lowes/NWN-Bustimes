@@ -161,7 +161,10 @@ async function fetchBustimesXhr(atcocode: string): Promise<StopDepartures | null
     const cells = $row.find('td');
     if (cells.length < 3) return;
 
-    const line = $(cells[0]).text().trim();
+    // Route labels are short (e.g. "2", "3H", "X1", "Coasthopper"). Restrict to
+    // a plain character set and length at the scrape boundary, since this text
+    // later goes into the AI prompt.
+    const line = $(cells[0]).text().trim().replace(/[^\w .&/+-]/g, '').slice(0, 20);
     const dirCell = $(cells[1]).clone();
     dirCell.find('.vehicle').remove();
     const direction = dirCell.text().trim();
