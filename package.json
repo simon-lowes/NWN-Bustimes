@@ -17,7 +17,7 @@
     "@google/genai": "^2.28.0",
     "cheerio": "^1.2.0",
     "express": "^4.22.2",
-    "express-rate-limit": "^8.7.0",
+    "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
     "motion": "^14.0.0",
     "react": "^19.2.7",
