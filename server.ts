@@ -138,7 +138,7 @@ app.get('/api/alerts', (_req, res) => {
 
 // Bustimes.org proxy — relays requests to avoid CORS issues in production
 // Restricted to /stops/ and /services/ paths to prevent abuse as an open proxy
-app.get('/api/bustimes/*', async (req, res) => {
+app.get('/api/bustimes/*path', async (req, res) => {
   const bustimesPath = req.url.replace(/^\/api\/bustimes\//, '');
 
   // Validate path: only allow stops/ and services/ endpoints, block traversal
@@ -176,7 +176,7 @@ const distPath = path.resolve(import.meta.dirname, 'dist');
 app.use(express.static(distPath));
 
 // SPA fallback — serve index.html for any non-API route
-app.get('*', spaFallbackLimiter, (_req, res) => {
+app.get('/{*splat}', spaFallbackLimiter, (_req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
