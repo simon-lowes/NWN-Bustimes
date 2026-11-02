@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
+- **qs 6.16.0 → 6.17.1** (npm audit, 2026-11-02). Clears the moderate qs advisory. It comes in through Express and body-parser, and the existing `"qs": "^6.16.0"` override already allowed it, so only the lockfile changes.
 - **Untrusted text no longer goes into the Gemini system prompt** (CodeQL "System prompt injection"). The scraped timetable summary, fetched UK time and client location now travel in a delimited `<context_data>` turn that the static system instruction tells the model to treat as data only. Control characters are stripped and the block is capped at 8 KB. Scraped route labels are restricted to a plain character set at the scrape boundary.
 - **Rate limiting on all routes** (CodeQL "Missing rate limiting"). A general 300 requests/minute/IP limiter now covers the timetable API, the bustimes.org proxy, static files and the SPA fallback. The AI endpoint keeps its stricter 10/minute limit on top.
 
