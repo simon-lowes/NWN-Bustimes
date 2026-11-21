@@ -3,6 +3,7 @@ import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { askBusQuestion } from './server/aiService.js';
+import { tryJevFastPath } from './server/jevFastPath.js';
 import { getDepartures, getAlerts, startBackgroundJobs } from './server/departures.js';
 
 const app = express();
@@ -105,7 +106,7 @@ app.post('/api/ai/ask', aiLimiter, async (req, res) => {
         )
       : undefined;
 
-    const response = await askBusQuestion(question, safeHistory, location);
+    const response = (!safeHistory?.length && (await tryJevFastPath(question))) || (await askBusQuestion(question, safeHistory, location));
     res.json(response);
   } catch (err) {
     console.error('AI request failed:', err);

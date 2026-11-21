@@ -24,7 +24,7 @@ export interface Alert {
   detectedAt: string;
 }
 
-const STOP_NAMES: Record<string, string> = {
+export const STOP_NAMES: Record<string, string> = {
   '2900H5315': 'Hunstanton Bus Station (Stand A)',
   '2900H5314': 'Hunstanton Bus Station (Stand B)',
   '2900K13139': "King's Lynn Transport Interchange (Stand C)",
@@ -34,7 +34,7 @@ const STOP_NAMES: Record<string, string> = {
 };
 
 // What destinations each stand serves — critical for AI context
-const STAND_DESTINATIONS: Record<string, string> = {
+export const STAND_DESTINATIONS: Record<string, string> = {
   '2900H5315': 'buses to King\'s Lynn',
   '2900H5314': 'buses to Fakenham',
   '2900K13139': 'buses to West Lynn (routes 2, 3)',
